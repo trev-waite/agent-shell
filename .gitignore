@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.turbo/
+.cursor/
+data/
+.env
+*.db
+*.db-journal
+*.tsbuildinfo
+.DS_Store
