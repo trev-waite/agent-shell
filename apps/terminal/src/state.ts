@@ -48,6 +48,8 @@ export interface UIState {
   serverOnline: boolean | null;
   streamConnected: boolean;
   activity: ActivityStatus | null;
+  /** Event ids already applied — prevents duplicate delivery across replay + SSE. */
+  seenEventIds: string[];
 }
 
 export type UIAction =
@@ -87,6 +89,7 @@ export const initialState: UIState = {
   serverOnline: null,
   streamConnected: false,
   activity: null,
+  seenEventIds: [],
 };
 
 function hasStreamingAssistant(messages: ChatMessage[]): boolean {
@@ -96,7 +99,7 @@ function hasStreamingAssistant(messages: ChatMessage[]): boolean {
 export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
     case "SET_SESSION":
-      return { ...state, sessionId: action.sessionId };
+      return { ...state, sessionId: action.sessionId, seenEventIds: [] };
     case "SET_INPUT":
       return { ...state, input: action.input };
     case "SET_SELECTED_MODEL":
@@ -197,13 +200,18 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...initialState };
     case "EVENT": {
       const event = action.event;
+      if (state.seenEventIds.includes(event.id)) {
+        return state;
+      }
+      const base: UIState = { ...state, seenEventIds: [...state.seenEventIds, event.id] };
+
       switch (event.type) {
         case "message.started": {
           const payload = event.payload;
           return {
-            ...state,
+            ...base,
             messages: [
-              ...state.messages,
+              ...base.messages,
               {
                 id: event.id,
                 role: payload.role,
@@ -214,13 +222,13 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
             activity:
               payload.role === "user"
                 ? { label: "Thinking…", phase: "thinking" }
-                : state.activity,
-            metrics: { ...state.metrics, sessionStatus: "running" },
+                : base.activity,
+            metrics: { ...base.metrics, sessionStatus: "running" },
           };
         }
         case "token.streamed": {
           const payload = event.payload;
-          const messages = [...state.messages];
+          const messages = [...base.messages];
           const idx = messages.findIndex((m) => m.id === payload.messageId);
           if (idx >= 0) {
             messages[idx] = {
@@ -237,14 +245,14 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
             });
           }
           return {
-            ...state,
+            ...base,
             messages,
             activity: { label: "Writing…", phase: "streaming" },
           };
         }
         case "message.completed": {
           const payload = event.payload;
-          const messages = [...state.messages];
+          const messages = [...base.messages];
           const idx = messages.findIndex(
             (m) =>
               m.id === payload.messageId ||
@@ -268,7 +276,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
           }
 
           return {
-            ...state,
+            ...base,
             messages,
             activity: null,
           };
@@ -276,9 +284,9 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         case "tool.started": {
           const payload = event.payload;
           return {
-            ...state,
+            ...base,
             traces: [
-              ...state.traces,
+              ...base.traces,
               {
                 id: payload.toolCallId,
                 toolName: payload.toolName,
@@ -294,7 +302,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         }
         case "tool.completed": {
           const payload = event.payload;
-          const traces = state.traces.map((t) => {
+          const traces = base.traces.map((t) => {
             if (t.id !== payload.toolCallId) return t;
             return {
               ...t,
@@ -305,20 +313,20 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
           });
           const stillRunning = traces.some((t) => t.status === "running");
           return {
-            ...state,
+            ...base,
             traces,
             activity:
-              stillRunning || hasStreamingAssistant(state.messages)
-                ? state.activity
+              stillRunning || hasStreamingAssistant(base.messages)
+                ? base.activity
                 : { label: "Thinking…", phase: "thinking" },
           };
         }
         case "cost.updated": {
           const payload = event.payload;
           return {
-            ...state,
+            ...base,
             metrics: {
-              ...state.metrics,
+              ...base.metrics,
               inputTokens: payload.inputTokens,
               outputTokens: payload.outputTokens,
               totalCost: payload.totalCost,
@@ -331,9 +339,9 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         case "error": {
           const payload = event.payload;
           return {
-            ...state,
+            ...base,
             messages: [
-              ...state.messages,
+              ...base.messages,
               {
                 id: event.id,
                 role: "error" as const,
@@ -341,11 +349,11 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
               },
             ],
             activity: null,
-            metrics: { ...state.metrics, sessionStatus: "failed" },
+            metrics: { ...base.metrics, sessionStatus: "failed" },
           };
         }
         default:
-          return state;
+          return base;
       }
     }
     default:

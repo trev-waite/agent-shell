@@ -8,7 +8,8 @@ export function deriveSessionStatus(events: RelayEvent[]): SessionStatus {
   const hasStarted = events.some((e) => e.type === "message.started");
 
   if (lastError) {
-    const payload = lastError.payload as { recoverable?: boolean };
+    const payload = lastError.payload as { code?: string; recoverable?: boolean };
+    if (payload.code === "CANCELLED") return "cancelled";
     if (payload.recoverable) return "paused";
     return "failed";
   }

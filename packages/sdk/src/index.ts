@@ -1,5 +1,4 @@
 import type { RelayEvent } from "@relay/types";
-import type { GeminiModelId } from "@relay/types";
 
 export interface RelayClientOptions {
   baseUrl?: string;
@@ -7,7 +6,8 @@ export interface RelayClientOptions {
 
 export interface SendOptions {
   prompt: string;
-  model?: GeminiModelId;
+  /** Provider model id (e.g. gemini-3.1-flash-lite). Validated server-side per provider. */
+  model?: string;
 }
 
 export interface ProviderModelsInfo {
@@ -38,9 +38,24 @@ export interface ReplayOptions {
   onError?: (error: Error) => void;
 }
 
+export interface CheckpointInfo {
+  checkpointId: string;
+  label?: string;
+  timestamp: number;
+  iteration?: number;
+}
+
+export interface RerunOptions {
+  sessionId: string;
+  checkpointId?: string;
+  model?: string;
+}
+
 export interface RelayClient {
   send(opts: SendOptions): Promise<{ sessionId: string }>;
   listModels(): Promise<ModelsResponse>;
+  listCheckpoints(sessionId: string): Promise<{ checkpoints: CheckpointInfo[] }>;
+  rerun(opts: RerunOptions): Promise<{ sessionId: string }>;
   subscribe(opts: SubscribeOptions): () => void;
   replay(opts: ReplayOptions): () => void;
 }
@@ -75,6 +90,33 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
         throw new Error(`Failed to list models: ${response.status}`);
       }
       return response.json() as Promise<ModelsResponse>;
+    },
+
+    async listCheckpoints(sessionId: string): Promise<{ checkpoints: CheckpointInfo[] }> {
+      const response = await fetch(`${baseUrl}/sessions/${sessionId}/checkpoints`);
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to list checkpoints: ${response.status} ${text}`);
+      }
+      return response.json() as Promise<{ checkpoints: CheckpointInfo[] }>;
+    },
+
+    async rerun(options: RerunOptions): Promise<{ sessionId: string }> {
+      const response = await fetch(`${baseUrl}/sessions/${options.sessionId}/rerun`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(options.checkpointId !== undefined ? { checkpointId: options.checkpointId } : {}),
+          ...(options.model !== undefined ? { model: options.model } : {}),
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to rerun session: ${response.status} ${text}`);
+      }
+
+      return response.json() as Promise<{ sessionId: string }>;
     },
 
     subscribe(options: SubscribeOptions): () => void {

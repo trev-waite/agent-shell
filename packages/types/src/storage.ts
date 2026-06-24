@@ -6,6 +6,11 @@ export interface EventStore {
   getLastEventId(sessionId: string): string | null;
 }
 
+/** Persists an event and its derived projections atomically. */
+export interface EventProjector {
+  persist(event: RelayEvent): void;
+}
+
 export interface ExecutionStore {
   createSession(prompt: string): Session;
   getSession(sessionId: string): Session | null;
@@ -18,6 +23,7 @@ export interface CheckpointStore {
   get(sessionId: string, checkpointId: string): unknown | null;
 }
 
+// Future work: object storage for tool artifacts, exports, and large blobs.
 export interface ArtifactStore {
   put(sessionId: string, artifactId: string, data: unknown): void;
   get(sessionId: string, artifactId: string): unknown | null;

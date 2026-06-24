@@ -94,10 +94,15 @@ function App() {
       sessionIdRef.current = sessionId;
       dispatch({ type: "SET_SESSION", sessionId });
 
+      let lastReplayedEventId: string | undefined;
+
       const replayUnsub = client.replay({
         sessionId,
-        onEvent: (event) => dispatch({ type: "EVENT", event }),
-        onComplete: () => subscribeToSession(sessionId),
+        onEvent: (event) => {
+          lastReplayedEventId = event.id;
+          dispatch({ type: "EVENT", event });
+        },
+        onComplete: () => subscribeToSession(sessionId, lastReplayedEventId),
       });
 
       return () => replayUnsub();

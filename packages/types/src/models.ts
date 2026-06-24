@@ -1,3 +1,7 @@
+/**
+ * Model registry for Relay clients and server validation.
+ * Future work: add OpenAI / Anthropic adapters in @relay/providers and enable their tabs.
+ */
 export const GEMINI_MODELS = [
   { id: "gemini-3.1-flash-lite", label: "3.1 Flash Lite" },
   { id: "gemini-3.5-flash", label: "3.5 Flash" },
@@ -24,7 +28,7 @@ export interface ModelProvider {
   readonly defaultModel: string;
 }
 
-/** Registry of LLM providers — add entries here as new adapters ship. */
+/** Registry of LLM providers and models exposed to clients. */
 export const MODEL_PROVIDERS: readonly ModelProvider[] = [
   {
     id: "gemini",
@@ -36,14 +40,14 @@ export const MODEL_PROVIDERS: readonly ModelProvider[] = [
   {
     id: "openai",
     label: "OpenAI",
-    enabled: false,
+    enabled: false, // Future work: wire @relay/providers OpenAI adapter + server validation.
     models: [],
     defaultModel: "",
   },
   {
     id: "anthropic",
     label: "Claude",
-    enabled: false,
+    enabled: false, // Future work: wire @relay/providers Anthropic adapter + server validation.
     models: [],
     defaultModel: "",
   },

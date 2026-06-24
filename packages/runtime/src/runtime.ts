@@ -4,24 +4,23 @@ import type {
   RelayEvent,
   ExecutionStore,
   EventHandler,
+  EventProjector,
 } from "@relay/types";
-import { NotImplementedError as NotImplementedErrorClass } from "@relay/types";
 import type { LLMProvider } from "@relay/providers";
 import type { ToolRegistry } from "@relay/tool-registry";
-import type { RelayDatabase } from "@relay/storage";
-import {
-  projectMessage,
-  projectToolCallStart,
-  projectToolCallComplete,
-  saveSnapshot,
-} from "@relay/storage";
 import { ReActLoop } from "./loop/react-loop.js";
 import { deriveSessionStatus } from "./projections/session.js";
 import { sanitize } from "./sanitize.js";
+import {
+  findCheckpointEvent,
+  listCheckpointSummaries,
+  parseCheckpointData,
+  type CheckpointSummary,
+} from "./checkpoint.js";
 
 export interface RuntimeOptions {
   store: ExecutionStore;
-  db: RelayDatabase;
+  projector: EventProjector;
   provider: LLMProvider;
   toolRegistry: ToolRegistry;
 }
@@ -34,6 +33,12 @@ export interface ExecuteOptions {
 export interface ReplayOptions {
   sessionId: string;
   afterEventId?: string;
+}
+
+export interface RerunOptions {
+  sessionId: string;
+  checkpointId?: string;
+  model?: string;
 }
 
 export interface CancelOptions {
@@ -52,7 +57,7 @@ interface ActiveSession {
 
 export class Runtime {
   private readonly store: ExecutionStore;
-  private readonly db: RelayDatabase;
+  private readonly projector: EventProjector;
   private readonly provider: LLMProvider;
   private readonly toolRegistry: ToolRegistry;
   private readonly activeSessions = new Map<string, ActiveSession>();
@@ -60,7 +65,7 @@ export class Runtime {
 
   constructor(opts: RuntimeOptions) {
     this.store = opts.store;
-    this.db = opts.db;
+    this.projector = opts.projector;
     this.provider = opts.provider;
     this.toolRegistry = opts.toolRegistry;
     this.globalEmitter.setMaxListeners(100);
@@ -94,6 +99,57 @@ export class Runtime {
     });
 
     return session.id;
+  }
+
+  async rerun(opts: RerunOptions): Promise<string> {
+    if (this.activeSessions.has(opts.sessionId)) {
+      throw new Error("Session is already running");
+    }
+
+    const session = this.store.getSession(opts.sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
+
+    const events = this.store.events.getBySession(opts.sessionId);
+    const checkpointEvent = findCheckpointEvent(events, opts.checkpointId);
+    const { iteration, messages } = parseCheckpointData(checkpointEvent.payload.data);
+
+    const emitter = new EventEmitter();
+    const abortController = new AbortController();
+
+    const emit: EventHandler = (event) => {
+      this.persistEvent(event);
+      emitter.emit("event", event);
+      this.globalEmitter.emit(`session:${opts.sessionId}`, event);
+    };
+
+    const loop = new ReActLoop({
+      sessionId: opts.sessionId,
+      prompt: session.prompt,
+      provider: this.provider,
+      toolRegistry: this.toolRegistry,
+      emit,
+      signal: abortController.signal,
+      resume: { messages, iteration },
+      ...(opts.model !== undefined ? { model: opts.model } : {}),
+    });
+
+    this.activeSessions.set(opts.sessionId, { loop, emitter, abortController });
+
+    loop.run().finally(() => {
+      this.activeSessions.delete(opts.sessionId);
+    });
+
+    return opts.sessionId;
+  }
+
+  listCheckpoints(sessionId: string): CheckpointSummary[] | null {
+    if (!this.store.getSession(sessionId)) {
+      return null;
+    }
+    const events = this.store.events.getBySession(sessionId);
+    return listCheckpointSummaries(events);
   }
 
   async *replay(opts: ReplayOptions): AsyncIterable<RelayEvent> {
@@ -153,55 +209,8 @@ export class Runtime {
     return deriveSessionStatus(events);
   }
 
-  rerun(): never {
-    throw new NotImplementedErrorClass("runtime.rerun()");
-  }
-
   private persistEvent(event: RelayEvent): void {
-    this.store.events.append(event);
-
-    switch (event.type) {
-      case "message.completed": {
-        const payload = event.payload;
-        projectMessage(this.db, {
-          id: payload.messageId,
-          sessionId: event.sessionId,
-          role: payload.role,
-          content: payload.content,
-          createdAt: event.timestamp,
-        });
-        break;
-      }
-      case "tool.started": {
-        const payload = event.payload;
-        projectToolCallStart(this.db, {
-          id: payload.toolCallId,
-          sessionId: event.sessionId,
-          toolName: payload.toolName,
-          input: payload.input,
-          output: null,
-          error: null,
-          startedAt: event.timestamp,
-          completedAt: null,
-        });
-        break;
-      }
-      case "tool.completed": {
-        const payload = event.payload;
-        projectToolCallComplete(
-          this.db,
-          payload.toolCallId,
-          payload.output,
-          payload.error ?? null,
-        );
-        break;
-      }
-      case "checkpoint.saved": {
-        const payload = event.payload;
-        saveSnapshot(this.db, event.sessionId, payload.checkpointId, payload.data);
-        break;
-      }
-    }
+    this.projector.persist(event);
   }
 }
 

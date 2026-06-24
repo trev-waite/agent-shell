@@ -66,6 +66,25 @@ Type a prompt and press Enter. Press **Tab** or **Ctrl+O** to open the **model m
 bun run apps/terminal/src/index.tsx --session <session-id>
 ```
 
+### Resume from a checkpoint
+
+After a failed or cancelled run, re-execute from the last saved checkpoint (or a specific one):
+
+```bash
+# List checkpoints for a session
+curl http://127.0.0.1:4310/sessions/<session-id>/checkpoints
+
+# Resume from latest checkpoint (same session id)
+curl -X POST http://127.0.0.1:4310/sessions/<session-id>/rerun
+
+# Resume from a specific checkpoint
+curl -X POST http://127.0.0.1:4310/sessions/<session-id>/rerun \
+  -H 'Content-Type: application/json' \
+  -d '{"checkpointId":"<checkpoint-id>"}'
+```
+
+Then attach with the terminal replay command above, or use `client.rerun()` + `client.subscribe()` from the SDK.
+
 ## Architecture
 
 ```
@@ -118,6 +137,11 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 │                  │
 │                  │     replay()      GET /sessions/:id/replay   (SSE, read-only)
 │                  │ ◄─────────────────  full history from SQLite
+│                  │
+│                  │     rerun()         POST /sessions/:id/rerun
+│                  │ ─────────────────►  resume execution from checkpoint
+│                  │
+│                  │     listCheckpoints() GET /sessions/:id/checkpoints
 └──────────────────┘
          │
          └── createClient() — fetch + SSE parser, auto-reconnect, Last-Event-ID
@@ -129,6 +153,8 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 |--------|------|---------|
 | `send({ prompt, model? })` | `POST /sessions` | Start a new agent session; returns `{ sessionId }` |
 | `listModels()` | `GET /models` | Provider registry + model lists (Gemini today) |
+| `listCheckpoints(sessionId)` | `GET /sessions/:id/checkpoints` | Checkpoint ids, labels, and iteration numbers |
+| `rerun({ sessionId, checkpointId?, model? })` | `POST /sessions/:id/rerun` | Resume execution from a checkpoint; returns `{ sessionId }` |
 | `subscribe({ sessionId, onEvent, … })` | `GET /sessions/:id/events` | Live SSE stream — tokens, tools, costs, errors |
 | `replay({ sessionId, onEvent, … })` | `GET /sessions/:id/replay` | Read-only replay of persisted events, then closes |
 
@@ -142,7 +168,8 @@ Every `onEvent` callback receives a typed `RelayEvent` from `@relay/types` — t
 
 1. **New prompt** — `client.send()` returns a `sessionId`, then `client.subscribe()` opens the live stream. Events flow into a React reducer (`state.ts`) that builds chat messages, tool traces, and metrics.
 2. **Session replay** — `bun run apps/terminal/src/index.tsx --session <id>` calls `client.replay()` to rebuild history from the event log, then `subscribe()` to pick up anything still running.
-3. **Disposable UI** — closing the terminal calls the unsubscribe function; the runtime server and SQLite log keep running untouched.
+3. **Checkpoint resume** — `client.rerun({ sessionId })` restores the ReAct loop from the latest `checkpoint.saved` snapshot and continues execution on the same session.
+4. **Disposable UI** — closing the terminal calls the unsubscribe function; the runtime server and SQLite log keep running untouched.
 
 The terminal does **not** load `GEMINI_API_KEY` or any server secrets — only `RELAY_URL` (optional) to find the runtime. All LLM and tool execution stays in Process 1.
 
@@ -178,6 +205,12 @@ const stop = client.subscribe({
 });
 
 // Later: stop(); or attach to an existing session with replay + subscribe
+
+const { checkpoints } = await client.listCheckpoints(sessionId);
+if (checkpoints.length > 0) {
+  await client.rerun({ sessionId }); // latest checkpoint
+  // await client.rerun({ sessionId, checkpointId: checkpoints[0].checkpointId });
+}
 ```
 
 The SDK is **fetch-native** (no WebSocket library, no code generation) — it runs in Bun, Node 24+, and browsers pointed at a local runtime. If the HTTP routes don't change, every client keeps working.
@@ -202,12 +235,14 @@ Session status (`idle`, `running`, `paused`, `completed`, `failed`, `cancelled`)
 
 ### Replay vs rerun
 
-| | Replay | Rerun |
-|---|--------|-------|
+| | Replay | Rerun (resume) |
+|---|--------|----------------|
 | **What** | Stream historical events from SQLite | Re-execute from a checkpoint |
-| **Re-executes LLM?** | No | Yes (future) |
-| **MVP status** | Implemented | Defined, not implemented |
-| **Use case** | UI reconnect, audit, crash recovery view | Resume work after failure |
+| **Re-executes LLM?** | No | Yes |
+| **MVP status** | Implemented | Implemented |
+| **Use case** | UI reconnect, audit, crash recovery view | Resume after error, cancel, or max-iterations |
+
+**Checkpoints** are saved automatically after each tool-loop iteration (and on completion). Each `checkpoint.saved` event carries the full message history and iteration count. `rerun` restores that state and continues the ReAct loop without re-emitting the original user message.
 
 Replay reconstructs state **only from events**. No hidden state. Kill the server, restart it, replay a session — the transcript matches exactly.
 
@@ -232,11 +267,12 @@ Messages are never written directly by the loop or tools — only projected by t
 The server-side runtime (`@relay/runtime`) is for execution internals and contributors — not for UI clients. Use [`@relay/sdk`](#relay-sdk-relaysdk) from anything that renders or observes.
 
 ```typescript
-runtime.execute({ prompt })      // Start new session
-runtime.replay({ sessionId })    // Stream historical events (read-only)
-runtime.cancel({ sessionId })    // Abort in-flight execution
-runtime.subscribe({ sessionId })   // Live event fanout (in-process)
-runtime.rerun()                    // Throws NotImplementedError (future)
+runtime.execute({ prompt })           // Start new session
+runtime.replay({ sessionId })         // Stream historical events (read-only)
+runtime.rerun({ sessionId, checkpointId? })  // Resume from checkpoint
+runtime.listCheckpoints(sessionId)    // List saved checkpoints for a session
+runtime.cancel({ sessionId })         // Abort in-flight execution
+runtime.subscribe({ sessionId })      // Live event fanout (in-process)
 ```
 
 ## Monorepo
@@ -262,11 +298,12 @@ Turborepo manages build ordering, dev parallelization, and typechecking — not 
 
 ## Security
 
-- Server binds `127.0.0.1` only — not exposed to the network by default
+Relay is a **local-first dev tool** (like Cursor or Claude Code): the agent runs on your machine with broad filesystem access by design. The runtime binds `127.0.0.1` only — not exposed to the network by default. There is no auth layer in the MVP; that is acceptable for solo local use.
+
 - API keys and secrets stay in the server process; clients never receive them
 - Tool inputs/outputs are sanitized before storage and before LLM context
 - Events are safe to replay in any environment
-- `file.read` blocks path traversal and `.env` files
+- `file.read` blocks `.env` files and path traversal via symlinks (light guardrails, not a sandbox)
 - `shell.exec` is allowlisted (`pwd`, `ls`, `cat` only) with a minimal spawn environment
 
 ## Development
@@ -274,6 +311,7 @@ Turborepo manages build ordering, dev parallelization, and typechecking — not 
 ```bash
 bun run build       # Build all packages
 bun run typecheck   # Type-check all packages
+bun run test        # Invariant tests (storage, runtime, terminal reducer)
 bun run dev:server  # Runtime only (direct Bun watch, loads root .env)
 bun run dev:terminal # Ink UI only (direct Bun watch)
 bun run dev         # Both via Turborepo (use two terminals instead for daily work)

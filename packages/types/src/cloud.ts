@@ -1,3 +1,7 @@
+/**
+ * Future work: distributed execution interfaces for cloud / multi-worker deployments.
+ * Kept in-repo to document the intended extension points — not wired in the MVP runtime.
+ */
 import type { RelayEvent } from "./events.js";
 
 export interface DurableExecutor {

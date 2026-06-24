@@ -8,6 +8,7 @@ import { createRuntime } from "@relay/runtime";
 import {
   createDatabase,
   createExecutionStore,
+  createEventProjector,
   migrateDatabase,
 } from "@relay/storage";
 import { createToolRegistry } from "@relay/tool-registry";
@@ -32,6 +33,7 @@ async function main() {
   migrateDatabase(DB_PATH);
   const db = createDatabase(DB_PATH);
   const store = createExecutionStore(db);
+  const projector = createEventProjector(db);
   const toolRegistry = createToolRegistry();
   registerTools(toolRegistry);
 
@@ -44,7 +46,7 @@ async function main() {
     apiKey,
     model: defaultModel,
   });
-  const runtime = createRuntime({ store, db, provider, toolRegistry });
+  const runtime = createRuntime({ store, projector, provider, toolRegistry });
 
   const app = Fastify({ logger: true });
 
@@ -86,25 +88,16 @@ async function main() {
         Connection: "keep-alive",
       });
 
+      const sentIds = new Set<string>();
       const sendEvent = (event: RelayEvent) => {
-        if (!reply.raw.writableEnded) {
-          reply.raw.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
-        }
+        if (reply.raw.writableEnded || sentIds.has(event.id)) return;
+        sentIds.add(event.id);
+        reply.raw.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
       };
 
-      // Replay persisted events so clients that connect after execution starts
-      // still receive message/token history (not only live fanout).
       const historical = store.events.getBySession(sessionId, afterId);
       for (const event of historical) {
         sendEvent(event);
-      }
-
-      const lastReplayedId =
-        historical.length > 0 ? historical[historical.length - 1]!.id : afterId;
-      if (lastReplayedId) {
-        for (const event of store.events.getBySession(sessionId, lastReplayedId)) {
-          sendEvent(event);
-        }
       }
 
       const unsubscribe = runtime.onSessionEvent(sessionId, sendEvent);
@@ -151,6 +144,59 @@ async function main() {
       const { id: sessionId } = request.params;
       runtime.cancel({ sessionId });
       return { cancelled: true };
+    },
+  );
+
+  app.get<{ Params: { id: string } }>(
+    "/sessions/:id/checkpoints",
+    async (request, reply) => {
+      const { id: sessionId } = request.params;
+      const checkpoints = runtime.listCheckpoints(sessionId);
+      if (checkpoints === null) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+      return { checkpoints };
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { checkpointId?: string; model?: string } }>(
+    "/sessions/:id/rerun",
+    async (request, reply) => {
+      const { id: sessionId } = request.params;
+      const { checkpointId, model } = request.body ?? {};
+
+      if (model !== undefined && !isGeminiModelId(model)) {
+        return reply.status(400).send({ error: `Unsupported model: ${model}` });
+      }
+
+      try {
+        const resumedSessionId = await runtime.rerun({
+          sessionId,
+          ...(checkpointId !== undefined ? { checkpointId } : {}),
+          ...(model !== undefined ? { model } : {}),
+        });
+        return { sessionId: resumedSessionId };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message === "Session not found") {
+          return reply.status(404).send({ error: message });
+        }
+        if (message === "Session is already running") {
+          return reply.status(409).send({ error: message });
+        }
+        if (
+          message === "No checkpoints found for session" ||
+          message.startsWith("Checkpoint not found:")
+        ) {
+          return reply.status(404).send({ error: message });
+        }
+        if (
+          message.startsWith("Invalid checkpoint")
+        ) {
+          return reply.status(400).send({ error: message });
+        }
+        throw err;
+      }
     },
   );
 

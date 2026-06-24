@@ -23,6 +23,8 @@ export function createDatabase(dbPath: string): RelayDatabase {
   return drizzle(sqlite, { schema });
 }
 
+// Future work: consolidate with drizzle-kit migrations (db:generate / db:migrate).
+// Inline SQL here bootstraps fresh dev DBs; drizzle tracks schema evolution for production.
 export function migrateDatabase(dbPath: string): void {
   mkdirSync(dirname(dbPath), { recursive: true });
   const sqlite = new Database(dbPath, { create: true });
@@ -105,6 +107,7 @@ export function createEventStore(db: RelayDatabase): EventStore {
         if (afterIndex >= 0) {
           return rows.slice(afterIndex + 1).map(parseEvent);
         }
+        return [];
       }
 
       return rows.map(parseEvent);

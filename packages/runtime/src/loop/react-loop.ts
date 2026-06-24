@@ -14,6 +14,11 @@ export interface ReActLoopOptions {
   emit: EventHandler;
   model?: string;
   signal?: AbortSignal;
+  /** Restore loop state from a persisted checkpoint (via runtime.rerun). */
+  resume?: {
+    messages: Message[];
+    iteration: number;
+  };
 }
 
 export class ReActLoop implements ExecutionLoop {
@@ -31,19 +36,23 @@ export class ReActLoop implements ExecutionLoop {
   }
 
   async run(): Promise<void> {
-    const { sessionId, prompt, provider, toolRegistry, emit } = this.opts;
+    const { sessionId, prompt, provider, toolRegistry, emit, resume } = this.opts;
 
-    this.messages.push({ role: "user", content: sanitize(prompt) });
+    let iterations = resume?.iteration ?? 0;
 
-    emit({
-      id: ulid(),
-      sessionId,
-      type: "message.started",
-      timestamp: Date.now(),
-      payload: { role: "user", content: sanitize(prompt) },
-    });
+    if (resume) {
+      this.messages = [...resume.messages];
+    } else {
+      this.messages.push({ role: "user", content: sanitize(prompt) });
 
-    let iterations = 0;
+      emit({
+        id: ulid(),
+        sessionId,
+        type: "message.started",
+        timestamp: Date.now(),
+        payload: { role: "user", content: sanitize(prompt) },
+      });
+    }
 
     while (iterations < MAX_ITERATIONS && !this.cancelled) {
       if (this.abortController.signal.aborted) break;
@@ -96,6 +105,7 @@ export class ReActLoop implements ExecutionLoop {
             },
           });
 
+          this.saveCheckpoint(emit, iterations);
           return;
         }
 
@@ -122,6 +132,8 @@ export class ReActLoop implements ExecutionLoop {
         for (const toolCall of result.toolCalls) {
           await this.act(toolCall, toolRegistry, emit, assistantMessageId);
         }
+
+        this.saveCheckpoint(emit, iterations);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         emit({
@@ -285,13 +297,33 @@ export class ReActLoop implements ExecutionLoop {
     }
   }
 
+  private saveCheckpoint(emit: EventHandler, iteration: number): void {
+    const { sessionId } = this.opts;
+    const checkpointId = ulid();
+
+    emit({
+      id: ulid(),
+      sessionId,
+      type: "checkpoint.saved",
+      timestamp: Date.now(),
+      payload: {
+        checkpointId,
+        label: `iteration-${iteration}`,
+        data: {
+          iteration,
+          messages: this.messages,
+        },
+      },
+    });
+  }
+
   cancel(): void {
     this.cancelled = true;
     this.abortController.abort();
   }
 
   resume(): void {
-    throw new Error("resume() is not implemented in MVP");
+    throw new Error("Resume from checkpoint is handled by runtime.rerun()");
   }
 }
 

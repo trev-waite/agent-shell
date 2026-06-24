@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { realpathSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import { z } from "zod";
 import type { ToolRegistry } from "@relay/tool-registry";
@@ -18,15 +19,31 @@ const shellExecSchema = z.object({
 
 function assertAllowedReadPath(path: string, cwd: string): string {
   const resolved = isAbsolute(path) ? path : resolve(cwd, path);
-  const rel = relative(cwd, resolved);
-  if (rel.startsWith("..")) {
+  const realCwd = realpathSync.native(cwd);
+  let realPath: string;
+  try {
+    realPath = realpathSync.native(resolved);
+  } catch {
+    realPath = resolved;
+  }
+
+  const rel = relative(realCwd, realPath);
+  if (rel.startsWith("..") || rel === "") {
+    if (rel === "") {
+      const base = realPath.split("/").pop() ?? realPath;
+      if (base === ".env" || base.startsWith(".env.")) {
+        throw new Error("Reading .env files is not allowed");
+      }
+      return realPath;
+    }
     throw new Error("Path escapes working directory");
   }
-  const base = resolved.split("/").pop() ?? resolved;
+
+  const base = realPath.split("/").pop() ?? realPath;
   if (base === ".env" || base.startsWith(".env.")) {
     throw new Error("Reading .env files is not allowed");
   }
-  return resolved;
+  return realPath;
 }
 
 async function fileRead(input: unknown, cwd: string): Promise<unknown> {
