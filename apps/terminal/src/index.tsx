@@ -1,0 +1,254 @@
+import { useReducer, useEffect, useState, useCallback, useRef } from "react";
+import { render, Box, Text, useInput, useApp } from "ink";
+import { createClient } from "@relay/sdk";
+import { isGeminiModelId } from "@relay/types";
+import { ChatPanel } from "./components/ChatPanel.js";
+import { TracePanel } from "./components/TracePanel.js";
+import { MetricsPanel } from "./components/MetricsPanel.js";
+import { ModelSelector } from "./components/ModelSelector.js";
+import { AnimationContext } from "./hooks/useAnimationFrame.js";
+import { uiReducer, initialState } from "./state.js";
+
+const client = createClient();
+
+async function checkServerHealth(): Promise<boolean> {
+  const baseUrl = process.env.RELAY_URL ?? "http://localhost:4310";
+  try {
+    const response = await fetch(`${baseUrl}/health`, { signal: AbortSignal.timeout(2000) });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+function App() {
+  const [state, dispatch] = useReducer(uiReducer, initialState);
+  const [animFrame, setAnimFrame] = useState(0);
+  const { exit } = useApp();
+  const unsubscribeRef = useRef<(() => void) | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setAnimFrame((f) => f + 1);
+    }, 100);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    client.listModels().then((response) => {
+      if (!cancelled) {
+        const gemini = response.providers.find((provider) => provider.id === "gemini");
+        if (gemini?.default && isGeminiModelId(gemini.default)) {
+          dispatch({ type: "SET_SELECTED_MODEL", model: gemini.default });
+        }
+      }
+    }).catch(() => {
+      // keep bundled default when server is offline
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const poll = async () => {
+      const online = await checkServerHealth();
+      if (!cancelled) dispatch({ type: "SET_SERVER_ONLINE", online });
+    };
+
+    poll();
+    const interval = setInterval(poll, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const subscribeToSession = useCallback((sessionId: string, lastEventId?: string) => {
+    unsubscribeRef.current?.();
+    dispatch({ type: "SET_STREAM_CONNECTED", connected: false });
+
+    const unsub = client.subscribe({
+      sessionId,
+      ...(lastEventId !== undefined ? { lastEventId } : {}),
+      onConnect: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: true }),
+      onEvent: (event) => dispatch({ type: "EVENT", event }),
+      onError: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
+      onClose: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
+    });
+
+    unsubscribeRef.current = unsub;
+  }, []);
+
+  useEffect(() => {
+    const args = process.argv.slice(2);
+    const sessionIdx = args.indexOf("--session");
+    if (sessionIdx >= 0 && args[sessionIdx + 1]) {
+      const sessionId = args[sessionIdx + 1]!;
+      sessionIdRef.current = sessionId;
+      dispatch({ type: "SET_SESSION", sessionId });
+
+      let lastReplayedEventId: string | undefined;
+
+      const replayUnsub = client.replay({
+        sessionId,
+        onEvent: (event) => {
+          lastReplayedEventId = event.id;
+          dispatch({ type: "EVENT", event });
+        },
+        onComplete: () => subscribeToSession(sessionId, lastReplayedEventId),
+      });
+
+      return () => replayUnsub();
+    }
+  }, [subscribeToSession]);
+
+  useEffect(() => {
+    return () => unsubscribeRef.current?.();
+  }, []);
+
+  useInput((input, key) => {
+    if (key.ctrl && input === "c") {
+      exit();
+      return;
+    }
+
+    if (state.modelMenuOpen) {
+      if (key.escape) {
+        dispatch({ type: "CLOSE_MODEL_MENU" });
+        return;
+      }
+      if (key.return) {
+        dispatch({ type: "CONFIRM_MENU_SELECTION" });
+        return;
+      }
+      if (key.upArrow) {
+        dispatch({ type: "MENU_MOVE_UP" });
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "MENU_MOVE_DOWN" });
+        return;
+      }
+      if (key.leftArrow) {
+        dispatch({ type: "MENU_PROVIDER_PREV" });
+        return;
+      }
+      if (key.rightArrow) {
+        dispatch({ type: "MENU_PROVIDER_NEXT" });
+        return;
+      }
+      return;
+    }
+
+    if (key.escape) {
+      exit();
+      return;
+    }
+
+    if (key.ctrl && input === "o") {
+      dispatch({ type: "TOGGLE_MODEL_MENU" });
+      return;
+    }
+
+    if (key.tab && state.input.length === 0) {
+      dispatch({ type: "TOGGLE_MODEL_MENU" });
+      return;
+    }
+
+    if (key.return) {
+      const prompt = state.input.trim();
+      if (!prompt) return;
+
+      if (state.serverOnline === false) {
+        dispatch({ type: "SET_INPUT", input: state.input });
+        return;
+      }
+
+      dispatch({ type: "SET_INPUT", input: "" });
+
+      client.send({ prompt, model: state.selectedModel }).then(({ sessionId }) => {
+        sessionIdRef.current = sessionId;
+        dispatch({ type: "SET_SESSION", sessionId });
+        subscribeToSession(sessionId);
+      }).catch(() => {
+        dispatch({ type: "SET_SERVER_ONLINE", online: false });
+      });
+      return;
+    }
+
+    if (key.backspace || key.delete) {
+      dispatch({ type: "SET_INPUT", input: state.input.slice(0, -1) });
+      return;
+    }
+
+    if (input && !key.ctrl && !key.meta) {
+      dispatch({ type: "SET_INPUT", input: state.input + input });
+    }
+  });
+
+  return (
+    <AnimationContext.Provider value={animFrame}>
+      <Box flexDirection="column" height="100%">
+        <Box marginBottom={1}>
+          <Text bold color="white">
+            Relay Terminal
+          </Text>
+          {state.sessionId && (
+            <Text dimColor> — session {state.sessionId.slice(0, 8)}</Text>
+          )}
+        </Box>
+
+        {state.serverOnline === false && (
+          <Box marginBottom={1}>
+            <Text color="red">
+              Runtime server offline — start with: bun run dev:server
+            </Text>
+          </Box>
+        )}
+
+        <ChatPanel
+          messages={state.messages}
+          activity={state.activity}
+          animFrame={animFrame}
+        />
+
+        <Box flexDirection="row" marginTop={1}>
+          <TracePanel traces={state.traces} />
+          <MetricsPanel
+            metrics={state.metrics}
+            serverOnline={state.serverOnline}
+            streamConnected={state.streamConnected}
+            hasSession={state.sessionId !== null}
+          />
+        </Box>
+
+        <ModelSelector
+          selectedProviderId={state.selectedProviderId}
+          selectedModel={state.selectedModel}
+          menuOpen={state.modelMenuOpen}
+          menuProviderIndex={state.menuProviderIndex}
+          menuModelIndex={state.menuModelIndex}
+        />
+
+        <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
+          <Text color="green">{"> "}</Text>
+          <Text>{state.input}</Text>
+          <Text dimColor>_</Text>
+        </Box>
+
+        <Box marginTop={1}>
+          <Text dimColor>Tab/Ctrl+O model menu · Enter send · Esc exit</Text>
+        </Box>
+      </Box>
+    </AnimationContext.Provider>
+  );
+}
+
+render(<App />, { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr });
