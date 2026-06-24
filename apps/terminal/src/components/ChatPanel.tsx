@@ -1,53 +1,17 @@
 import { Box, Text } from "ink";
-import type { ActivityStatus, ChatMessage } from "../state.js";
+import type { ActivityStatus, ChatMessage, ToolTrace } from "../state.js";
 import { FormattedMessage } from "./FormattedMessage.js";
+import { InlineTraceFeed } from "./InlineTraceFeed.js";
+import { useSpinnerFrame } from "./ui/Spinner.js";
+import { useTheme } from "../hooks/ThemeContext.js";
+import type { LayoutConfig } from "../theme.js";
+import { formatTimestamp } from "../utils/format.js";
 
 interface ChatPanelProps {
   messages: ChatMessage[];
+  traces: ToolTrace[];
   activity: ActivityStatus | null;
-  animFrame: number;
-}
-
-function messageLabel(msg: ChatMessage): string {
-  if (msg.role === "user") return "You";
-  if (msg.role === "error") return "Error";
-  return "Assistant";
-}
-
-function messageColor(msg: ChatMessage): "green" | "cyan" | "red" {
-  if (msg.role === "user") return "green";
-  if (msg.role === "error") return "red";
-  return "cyan";
-}
-
-const ACTIVITY_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-function activityDots(animFrame: number): string {
-  const count = (Math.floor(animFrame / 5) % 3) + 1;
-  return ".".repeat(count);
-}
-
-function ActivityLine({
-  activity,
-  animFrame,
-}: {
-  activity: ActivityStatus;
-  animFrame: number;
-}) {
-  const spinner = ACTIVITY_SPINNER[animFrame % ACTIVITY_SPINNER.length]!;
-  const label = activity.label.replace(/…+$/, "");
-
-  return (
-    <Box marginBottom={1} paddingX={1}>
-      <Text>
-        <Text color="cyan">{spinner} </Text>
-        <Text dimColor>
-          {label}
-          {activityDots(animFrame)}
-        </Text>
-      </Text>
-    </Box>
-  );
+  layout: LayoutConfig;
 }
 
 function lastUserMessageIndex(messages: ChatMessage[]): number {
@@ -57,48 +21,87 @@ function lastUserMessageIndex(messages: ChatMessage[]): number {
   return -1;
 }
 
-export function ChatPanel({ messages, activity, animFrame }: ChatPanelProps) {
+export function ChatPanel({ messages, traces, activity, layout }: ChatPanelProps) {
+  const theme = useTheme();
+  const spinner = useSpinnerFrame();
   const lastUserIndex = lastUserMessageIndex(messages);
   const showActivity =
     activity !== null &&
     !messages.some((m) => m.role === "assistant" && m.streaming && m.content.length > 0);
 
   return (
-    <Box flexDirection="column" flexGrow={1} paddingX={1} borderStyle="single" borderColor="blue">
-      <Text bold color="blue">
-        Chat
-      </Text>
-      <Box flexDirection="column" marginTop={1}>
-        {messages.length === 0 && !showActivity ? (
+    <Box flexDirection="column" flexGrow={1} paddingX={1} marginTop={1} marginBottom={2} width={layout.columns}>
+      {messages.length === 0 && !showActivity ? (
+        <Box
+          flexGrow={1}
+          flexDirection="column"
+          justifyContent="center"
+          alignItems="center"
+        >
+          <Box marginBottom={1}>
+            <Text bold color={theme.text}>
+              Hello There!
+            </Text>
+          </Box>
           <Text dimColor>No messages yet. Type a prompt below.</Text>
-        ) : (
-          messages.map((msg, index) => (
-            <Box key={msg.id} flexDirection="column" marginBottom={1}>
-              <Text color={messageColor(msg)} bold>
-                {messageLabel(msg)}
-                {msg.streaming ? " …" : ""}
-              </Text>
+        </Box>
+      ) : (
+        messages.map((msg, index) => {
+          const isLastUser = msg.role === "user" && index === lastUserIndex;
+          const showInlineTrace =
+            isLastUser &&
+            (traces.some((t) => t.startedAt >= msg.timestamp) ||
+              (showActivity && activity !== null));
+
+          return (
+            <Box key={msg.id} flexDirection="column" marginBottom={2}>
               {msg.role === "user" ? (
-                <Text wrap="wrap">{msg.content}</Text>
+                <Box>
+                  <Text color={theme.motion}>❯ </Text>
+                  <Text color={theme.user} wrap="wrap">
+                    {msg.content}
+                  </Text>
+                  <Box flexGrow={1} justifyContent="flex-end">
+                    <Text dimColor>{formatTimestamp(msg.timestamp)}</Text>
+                  </Box>
+                </Box>
               ) : (
-                <FormattedMessage
-                  content={msg.content}
-                  color={msg.role === "error" ? "red" : undefined}
+                <>
+                  {msg.role === "error" ? (
+                    <Text color={theme.error} bold>
+                      ERROR
+                    </Text>
+                  ) : null}
+                  {msg.streaming && (
+                    <Text color={theme.motion}>{spinner} </Text>
+                  )}
+                  <FormattedMessage
+                    content={msg.content}
+                    color={msg.role === "error" ? theme.error : theme.text}
+                  />
+                </>
+              )}
+
+              {showInlineTrace && (
+                <InlineTraceFeed
+                  traces={traces}
+                  afterTimestamp={msg.timestamp}
+                  activity={showActivity && isLastUser ? activity : null}
+                  layout={layout}
                 />
               )}
-              {showActivity &&
-                activity !== null &&
-                msg.role === "user" &&
-                index === lastUserIndex && (
-                  <ActivityLine activity={activity} animFrame={animFrame} />
-                )}
             </Box>
-          ))
-        )}
-        {showActivity && lastUserIndex < 0 && activity !== null && (
-          <ActivityLine activity={activity} animFrame={animFrame} />
-        )}
-      </Box>
+          );
+        })
+      )}
+      {showActivity && lastUserIndex < 0 && activity !== null && (
+        <InlineTraceFeed
+          traces={traces}
+          afterTimestamp={0}
+          activity={activity}
+          layout={layout}
+        />
+      )}
     </Box>
   );
 }

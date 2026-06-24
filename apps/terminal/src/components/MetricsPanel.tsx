@@ -1,68 +1,55 @@
-import React from "react";
-import { Box, Text } from "ink";
-import type { Metrics } from "../state.js";
+import React, { useEffect, useState } from "react";
+import { Box } from "ink";
+import type { Metrics, ToolTrace } from "../state.js";
+import { buildMetricsGrid } from "../projections/metrics.js";
+import { MetricCell } from "./ui/MetricCell.js";
+import type { LayoutConfig } from "../theme.js";
 
 interface MetricsPanelProps {
   metrics: Metrics;
-  serverOnline: boolean | null;
-  streamConnected: boolean;
-  hasSession: boolean;
+  traces: ToolTrace[];
+  sessionStartedAt: number | null;
+  sessionEndedAt: number | null;
+  layout: LayoutConfig;
 }
 
 function MetricsPanelInner({
   metrics,
-  serverOnline,
-  streamConnected,
-  hasSession,
+  traces,
+  sessionStartedAt,
+  sessionEndedAt,
+  layout,
 }: MetricsPanelProps) {
-  const statusColor =
-    metrics.sessionStatus === "running"
-      ? "yellow"
-      : metrics.sessionStatus === "completed"
-        ? "green"
-        : metrics.sessionStatus === "failed"
-          ? "red"
-          : "gray";
+  const [now, setNow] = useState(Date.now());
 
-  const serverLabel =
-    serverOnline === null ? "checking…" : serverOnline ? "online" : "offline";
-  const serverColor =
-    serverOnline === null ? "gray" : serverOnline ? "green" : "red";
+  useEffect(() => {
+    if (metrics.sessionStatus !== "running") return;
+    const interval = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(interval);
+  }, [metrics.sessionStatus]);
 
-  const streamLabel = !hasSession
-    ? "standby"
-    : streamConnected
-      ? "live"
-      : "disconnected";
-  const streamColor = !hasSession ? "gray" : streamConnected ? "green" : "red";
+  const cells = buildMetricsGrid(
+    metrics,
+    traces,
+    sessionStartedAt,
+    sessionEndedAt,
+    layout.mode,
+    now,
+  );
+
+  const colWidth = layout.metricsColumns === 3 ? 10 : 14;
 
   return (
-    <Box
-      flexDirection="column"
-      width={28}
-      paddingX={1}
-      borderStyle="single"
-      borderColor="magenta"
-    >
-      <Text bold color="magenta">
-        Metrics
-      </Text>
-      <Box flexDirection="column" marginTop={1}>
-        <Text>
-          Status: <Text color={statusColor}>{metrics.sessionStatus}</Text>
-        </Text>
-        <Text>
-          Server: <Text color={serverColor}>{serverLabel}</Text>
-        </Text>
-        <Text>
-          Stream: <Text color={streamColor}>{streamLabel}</Text>
-        </Text>
-        <Text>Input tokens: {metrics.inputTokens}</Text>
-        <Text>Output tokens: {metrics.outputTokens}</Text>
-        <Text>
-          Cost: {metrics.totalCost.toFixed(6)} {metrics.currency}
-        </Text>
-      </Box>
+    <Box flexDirection="row" flexWrap="wrap">
+      {cells.map((cell) => (
+        <MetricCell
+          key={cell.id}
+          label={cell.label}
+          value={cell.value}
+          colorKey={cell.colorKey}
+          width={colWidth}
+        />
+      ))}
     </Box>
   );
 }

@@ -332,12 +332,14 @@ You have access to tools for reading files and executing read-only shell command
 Use tools when needed to answer questions about the local environment.
 Never request or expose secrets, API keys, or environment variables.
 
-Output format: prefer plain text for the terminal UI. You may use light formatting that renders well in a terminal:
-- **bold** or __bold__ for emphasis
-- \`inline code\` for paths, commands, and identifiers
-- "-" or "1." list lines for bullets and numbered lists
-Avoid # headings, tables, links, and fenced code blocks; use short paragraphs and indentation instead.
-Keep lines reasonably short (~80 characters) when listing files or code.`;
+The user sees your replies in a plain terminal (not a browser). Write for that UI:
+- Use short paragraphs and plain sentences by default.
+- For emphasis: **bold** or __bold__ sparingly.
+- For paths, commands, and identifiers: \`inline code\` only — no fenced \`\`\` blocks.
+- For lists: lines starting with "-" or "1." — no nested or deeply indented lists.
+- Do not use # headings, tables, blockquotes, images, or [links](url). Name files and URLs inline.
+- Keep lines under ~80 characters when listing files or showing code snippets.
+- Prefer one clear answer over long formatted documents.`;
 
 function estimateCost(inputTokens: number, outputTokens: number): number {
   const inputCost = (inputTokens / 1_000_000) * 0.1;
