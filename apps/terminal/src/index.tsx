@@ -1,9 +1,11 @@
 import { useReducer, useEffect, useState, useCallback, useRef } from "react";
 import { render, Box, Text, useInput, useApp } from "ink";
 import { createClient } from "@relay/sdk";
+import { isGeminiModelId } from "@relay/types";
 import { ChatPanel } from "./components/ChatPanel.js";
 import { TracePanel } from "./components/TracePanel.js";
 import { MetricsPanel } from "./components/MetricsPanel.js";
+import { ModelSelector } from "./components/ModelSelector.js";
 import { AnimationContext } from "./hooks/useAnimationFrame.js";
 import { uiReducer, initialState } from "./state.js";
 
@@ -31,6 +33,25 @@ function App() {
       setAnimFrame((f) => f + 1);
     }, 100);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    client.listModels().then((response) => {
+      if (!cancelled) {
+        const gemini = response.providers.find((provider) => provider.id === "gemini");
+        if (gemini?.default && isGeminiModelId(gemini.default)) {
+          dispatch({ type: "SET_SELECTED_MODEL", model: gemini.default });
+        }
+      }
+    }).catch(() => {
+      // keep bundled default when server is offline
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -88,8 +109,51 @@ function App() {
   }, []);
 
   useInput((input, key) => {
-    if (key.escape || (key.ctrl && input === "c")) {
+    if (key.ctrl && input === "c") {
       exit();
+      return;
+    }
+
+    if (state.modelMenuOpen) {
+      if (key.escape) {
+        dispatch({ type: "CLOSE_MODEL_MENU" });
+        return;
+      }
+      if (key.return) {
+        dispatch({ type: "CONFIRM_MENU_SELECTION" });
+        return;
+      }
+      if (key.upArrow) {
+        dispatch({ type: "MENU_MOVE_UP" });
+        return;
+      }
+      if (key.downArrow) {
+        dispatch({ type: "MENU_MOVE_DOWN" });
+        return;
+      }
+      if (key.leftArrow) {
+        dispatch({ type: "MENU_PROVIDER_PREV" });
+        return;
+      }
+      if (key.rightArrow) {
+        dispatch({ type: "MENU_PROVIDER_NEXT" });
+        return;
+      }
+      return;
+    }
+
+    if (key.escape) {
+      exit();
+      return;
+    }
+
+    if (key.ctrl && input === "o") {
+      dispatch({ type: "TOGGLE_MODEL_MENU" });
+      return;
+    }
+
+    if (key.tab && state.input.length === 0) {
+      dispatch({ type: "TOGGLE_MODEL_MENU" });
       return;
     }
 
@@ -104,7 +168,7 @@ function App() {
 
       dispatch({ type: "SET_INPUT", input: "" });
 
-      client.send({ prompt }).then(({ sessionId }) => {
+      client.send({ prompt, model: state.selectedModel }).then(({ sessionId }) => {
         sessionIdRef.current = sessionId;
         dispatch({ type: "SET_SESSION", sessionId });
         subscribeToSession(sessionId);
@@ -144,7 +208,11 @@ function App() {
           </Box>
         )}
 
-        <ChatPanel messages={state.messages} />
+        <ChatPanel
+          messages={state.messages}
+          activity={state.activity}
+          animFrame={animFrame}
+        />
 
         <Box flexDirection="row" marginTop={1}>
           <TracePanel traces={state.traces} />
@@ -156,6 +224,14 @@ function App() {
           />
         </Box>
 
+        <ModelSelector
+          selectedProviderId={state.selectedProviderId}
+          selectedModel={state.selectedModel}
+          menuOpen={state.modelMenuOpen}
+          menuProviderIndex={state.menuProviderIndex}
+          menuModelIndex={state.menuModelIndex}
+        />
+
         <Box marginTop={1} borderStyle="single" borderColor="gray" paddingX={1}>
           <Text color="green">{"> "}</Text>
           <Text>{state.input}</Text>
@@ -163,7 +239,7 @@ function App() {
         </Box>
 
         <Box marginTop={1}>
-          <Text dimColor>Enter to send · Esc/Ctrl+C to exit (runtime keeps running)</Text>
+          <Text dimColor>Tab/Ctrl+O model menu · Enter send · Esc exit</Text>
         </Box>
       </Box>
     </AnimationContext.Provider>

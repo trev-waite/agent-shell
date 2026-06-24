@@ -13,6 +13,11 @@ import {
 import { createToolRegistry } from "@relay/tool-registry";
 import { registerTools } from "@relay/tools";
 import type { RelayEvent } from "@relay/types";
+import {
+  DEFAULT_GEMINI_MODEL,
+  isGeminiModelId,
+  providerModelsResponse,
+} from "@relay/types";
 
 const PORT = Number(process.env.RELAY_PORT ?? 4310);
 const DB_PATH = process.env.RELAY_DB_PATH ?? "./data/relay.db";
@@ -30,9 +35,14 @@ async function main() {
   const toolRegistry = createToolRegistry();
   registerTools(toolRegistry);
 
+  const defaultModel =
+    process.env.GEMINI_MODEL && isGeminiModelId(process.env.GEMINI_MODEL)
+      ? process.env.GEMINI_MODEL
+      : DEFAULT_GEMINI_MODEL;
+
   const provider = createGeminiProvider({
     apiKey,
-    ...(process.env.GEMINI_MODEL !== undefined ? { model: process.env.GEMINI_MODEL } : {}),
+    model: defaultModel,
   });
   const runtime = createRuntime({ store, db, provider, toolRegistry });
 
@@ -40,13 +50,24 @@ async function main() {
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  app.post<{ Body: { prompt: string } }>("/sessions", async (request, reply) => {
-    const { prompt } = request.body;
+  app.get("/models", async () => ({
+    providers: providerModelsResponse(),
+  }));
+
+  app.post<{ Body: { prompt: string; model?: string } }>("/sessions", async (request, reply) => {
+    const { prompt, model } = request.body;
     if (!prompt || typeof prompt !== "string") {
       return reply.status(400).send({ error: "prompt is required" });
     }
 
-    const sessionId = await runtime.execute({ prompt });
+    if (model !== undefined && !isGeminiModelId(model)) {
+      return reply.status(400).send({ error: `Unsupported model: ${model}` });
+    }
+
+    const sessionId = await runtime.execute({
+      prompt,
+      ...(model !== undefined ? { model } : {}),
+    });
     return { sessionId };
   });
 

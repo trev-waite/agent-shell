@@ -28,6 +28,7 @@ export interface RuntimeOptions {
 
 export interface ExecuteOptions {
   prompt: string;
+  model?: string;
 }
 
 export interface ReplayOptions {
@@ -83,6 +84,7 @@ export class Runtime {
       toolRegistry: this.toolRegistry,
       emit,
       signal: abortController.signal,
+      ...(opts.model !== undefined ? { model: opts.model } : {}),
     });
 
     this.activeSessions.set(session.id, { loop, emitter, abortController });

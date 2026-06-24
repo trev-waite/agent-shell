@@ -1,6 +1,8 @@
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { generateText, embed, streamText, tool } from "ai";
 import { z } from "zod";
+import { DEFAULT_GEMINI_MODEL } from "@relay/types";
+import { toModelMessages } from "./messages.js";
 import type {
   LLMProvider,
   StreamOptions,
@@ -9,7 +11,7 @@ import type {
   ToolDefinition,
 } from "./types.js";
 
-const DEFAULT_MODEL = "gemini-3.1-flash-lite";
+const DEFAULT_MODEL = DEFAULT_GEMINI_MODEL;
 const EMBED_MODEL = "text-embedding-004";
 
 export interface GeminiProviderOptions {
@@ -24,13 +26,11 @@ export function createGeminiProvider(opts: GeminiProviderOptions): LLMProvider {
   return {
     async stream(options: StreamOptions): Promise<StreamResult> {
       const tools = buildTools(options.tools);
+      const activeModel = options.model ?? modelId;
 
       const result = streamText({
-        model: google(modelId),
-        messages: options.messages.map((m) => ({
-          role: m.role === "tool" ? "assistant" : m.role,
-          content: m.content,
-        })),
+        model: google(activeModel),
+        messages: toModelMessages(options.messages),
         ...optionalStreamFields(options, tools),
       });
 
@@ -66,10 +66,7 @@ export function createGeminiProvider(opts: GeminiProviderOptions): LLMProvider {
     async complete(options: CompleteOptions): Promise<string> {
       const result = await generateText({
         model: google(modelId),
-        messages: options.messages.map((m) => ({
-          role: m.role === "tool" ? "assistant" : m.role,
-          content: m.content,
-        })),
+        messages: toModelMessages(options.messages),
         ...optionalCompleteFields(options),
       });
       return result.text;

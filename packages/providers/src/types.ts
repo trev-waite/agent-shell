@@ -3,6 +3,7 @@ export interface Message {
   content: string;
   toolCallId?: string;
   toolName?: string;
+  toolCalls?: ToolCallRequest[];
 }
 
 export interface ToolDefinition {
@@ -15,6 +16,7 @@ export interface StreamOptions {
   messages: Message[];
   tools?: ToolDefinition[];
   systemPrompt?: string;
+  model?: string;
   onToken?: (token: string) => void;
   signal?: AbortSignal;
 }

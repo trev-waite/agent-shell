@@ -5,7 +5,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:server": "turbo run dev --filter=@relay/server",
+    "dev:server": "bun --env-file=.env run --watch apps/server/src/index.ts",
     "dev:terminal": "bun --watch apps/terminal/src/index.tsx",
     "typecheck": "turbo run typecheck",
     "db:generate": "bun run --bun drizzle-kit generate --config packages/storage/drizzle.config.ts",

@@ -1,4 +1,5 @@
 import type { RelayEvent } from "@relay/types";
+import type { GeminiModelId } from "@relay/types";
 
 export interface RelayClientOptions {
   baseUrl?: string;
@@ -6,6 +7,19 @@ export interface RelayClientOptions {
 
 export interface SendOptions {
   prompt: string;
+  model?: GeminiModelId;
+}
+
+export interface ProviderModelsInfo {
+  id: string;
+  label: string;
+  enabled: boolean;
+  default?: string;
+  models: readonly { id: string; label: string }[];
+}
+
+export interface ModelsResponse {
+  providers: readonly ProviderModelsInfo[];
 }
 
 export interface SubscribeOptions {
@@ -26,6 +40,7 @@ export interface ReplayOptions {
 
 export interface RelayClient {
   send(opts: SendOptions): Promise<{ sessionId: string }>;
+  listModels(): Promise<ModelsResponse>;
   subscribe(opts: SubscribeOptions): () => void;
   replay(opts: ReplayOptions): () => void;
 }
@@ -40,7 +55,10 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
       const response = await fetch(`${baseUrl}/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: options.prompt }),
+        body: JSON.stringify({
+          prompt: options.prompt,
+          ...(options.model !== undefined ? { model: options.model } : {}),
+        }),
       });
 
       if (!response.ok) {
@@ -49,6 +67,14 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
       }
 
       return response.json() as Promise<{ sessionId: string }>;
+    },
+
+    async listModels(): Promise<ModelsResponse> {
+      const response = await fetch(`${baseUrl}/models`);
+      if (!response.ok) {
+        throw new Error(`Failed to list models: ${response.status}`);
+      }
+      return response.json() as Promise<ModelsResponse>;
     },
 
     subscribe(options: SubscribeOptions): () => void {

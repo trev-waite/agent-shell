@@ -12,6 +12,7 @@ export interface ReActLoopOptions {
   provider: LLMProvider;
   toolRegistry: ToolRegistry;
   emit: EventHandler;
+  model?: string;
   signal?: AbortSignal;
 }
 
@@ -98,7 +99,25 @@ export class ReActLoop implements ExecutionLoop {
           return;
         }
 
-        this.messages.push({ role: "assistant", content: sanitize(assistantContent) });
+        this.messages.push({
+          role: "assistant",
+          content: sanitize(assistantContent),
+          toolCalls: result.toolCalls,
+        });
+
+        if (assistantContent) {
+          emit({
+            id: ulid(),
+            sessionId,
+            type: "message.completed",
+            timestamp: Date.now(),
+            payload: {
+              messageId: assistantMessageId,
+              role: "assistant",
+              content: sanitize(assistantContent),
+            },
+          });
+        }
 
         for (const toolCall of result.toolCalls) {
           await this.act(toolCall, toolRegistry, emit, assistantMessageId);
@@ -146,6 +165,7 @@ export class ReActLoop implements ExecutionLoop {
       tools,
       systemPrompt: SYSTEM_PROMPT,
       onToken,
+      ...(this.opts.model !== undefined ? { model: this.opts.model } : {}),
       signal: this.abortController.signal,
     });
   }
@@ -278,7 +298,14 @@ export class ReActLoop implements ExecutionLoop {
 const SYSTEM_PROMPT = `You are a helpful AI assistant running locally via Relay.
 You have access to tools for reading files and executing read-only shell commands (pwd, ls, cat).
 Use tools when needed to answer questions about the local environment.
-Never request or expose secrets, API keys, or environment variables.`;
+Never request or expose secrets, API keys, or environment variables.
+
+Output format: prefer plain text for the terminal UI. You may use light formatting that renders well in a terminal:
+- **bold** or __bold__ for emphasis
+- \`inline code\` for paths, commands, and identifiers
+- "-" or "1." list lines for bullets and numbered lists
+Avoid # headings, tables, links, and fenced code blocks; use short paragraphs and indentation instead.
+Keep lines reasonably short (~80 characters) when listing files or code.`;
 
 function estimateCost(inputTokens: number, outputTokens: number): number {
   const inputCost = (inputTokens / 1_000_000) * 0.1;

@@ -1,4 +1,9 @@
 import type { RelayEvent } from "@relay/types";
+import type { GeminiModelId, ModelProviderId } from "@relay/types";
+import {
+  DEFAULT_GEMINI_MODEL,
+  getEnabledProviders,
+} from "@relay/types";
 
 export interface ChatMessage {
   id: string;
@@ -16,6 +21,11 @@ export interface ToolTrace {
   error?: string;
 }
 
+export interface ActivityStatus {
+  label: string;
+  phase: "thinking" | "tool" | "streaming";
+}
+
 export interface Metrics {
   inputTokens: number;
   outputTokens: number;
@@ -30,13 +40,28 @@ export interface UIState {
   metrics: Metrics;
   sessionId: string | null;
   input: string;
+  selectedProviderId: ModelProviderId;
+  selectedModel: GeminiModelId;
+  modelMenuOpen: boolean;
+  menuProviderIndex: number;
+  menuModelIndex: number;
   serverOnline: boolean | null;
   streamConnected: boolean;
+  activity: ActivityStatus | null;
 }
 
 export type UIAction =
   | { type: "SET_SESSION"; sessionId: string }
   | { type: "SET_INPUT"; input: string }
+  | { type: "SET_SELECTED_MODEL"; model: GeminiModelId }
+  | { type: "SET_MODEL_SELECTION"; providerId: ModelProviderId; model: GeminiModelId }
+  | { type: "TOGGLE_MODEL_MENU" }
+  | { type: "CLOSE_MODEL_MENU" }
+  | { type: "MENU_MOVE_UP" }
+  | { type: "MENU_MOVE_DOWN" }
+  | { type: "MENU_PROVIDER_PREV" }
+  | { type: "MENU_PROVIDER_NEXT" }
+  | { type: "CONFIRM_MENU_SELECTION" }
   | { type: "SET_SERVER_ONLINE"; online: boolean }
   | { type: "SET_STREAM_CONNECTED"; connected: boolean }
   | { type: "EVENT"; event: RelayEvent }
@@ -54,9 +79,19 @@ export const initialState: UIState = {
   },
   sessionId: null,
   input: "",
+  selectedProviderId: "gemini",
+  selectedModel: DEFAULT_GEMINI_MODEL,
+  modelMenuOpen: false,
+  menuProviderIndex: 0,
+  menuModelIndex: 0,
   serverOnline: null,
   streamConnected: false,
+  activity: null,
 };
+
+function hasStreamingAssistant(messages: ChatMessage[]): boolean {
+  return messages.some((m) => m.role === "assistant" && m.streaming);
+}
 
 export function uiReducer(state: UIState, action: UIAction): UIState {
   switch (action.type) {
@@ -64,6 +99,96 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, sessionId: action.sessionId };
     case "SET_INPUT":
       return { ...state, input: action.input };
+    case "SET_SELECTED_MODEL":
+      return { ...state, selectedProviderId: "gemini", selectedModel: action.model };
+    case "SET_MODEL_SELECTION":
+      return {
+        ...state,
+        selectedProviderId: action.providerId,
+        selectedModel: action.model,
+      };
+    case "TOGGLE_MODEL_MENU": {
+      if (state.modelMenuOpen) {
+        return { ...state, modelMenuOpen: false };
+      }
+      const enabled = getEnabledProviders();
+      const providerIndex = Math.max(
+        0,
+        enabled.findIndex((provider) => provider.id === state.selectedProviderId),
+      );
+      const provider = enabled[providerIndex] ?? enabled[0];
+      const modelIndex = Math.max(
+        0,
+        provider?.models.findIndex((model) => model.id === state.selectedModel) ?? 0,
+      );
+      return {
+        ...state,
+        modelMenuOpen: true,
+        menuProviderIndex: providerIndex,
+        menuModelIndex: modelIndex,
+      };
+    }
+    case "CLOSE_MODEL_MENU":
+      return { ...state, modelMenuOpen: false };
+    case "MENU_MOVE_UP": {
+      if (!state.modelMenuOpen) return state;
+      const provider = getEnabledProviders()[state.menuProviderIndex];
+      if (!provider || provider.models.length === 0) return state;
+      return {
+        ...state,
+        menuModelIndex: Math.max(0, state.menuModelIndex - 1),
+      };
+    }
+    case "MENU_MOVE_DOWN": {
+      if (!state.modelMenuOpen) return state;
+      const provider = getEnabledProviders()[state.menuProviderIndex];
+      if (!provider || provider.models.length === 0) return state;
+      return {
+        ...state,
+        menuModelIndex: Math.min(provider.models.length - 1, state.menuModelIndex + 1),
+      };
+    }
+    case "MENU_PROVIDER_PREV": {
+      if (!state.modelMenuOpen) return state;
+      const enabled = getEnabledProviders();
+      if (enabled.length <= 1) return state;
+      const nextIndex = (state.menuProviderIndex - 1 + enabled.length) % enabled.length;
+      const provider = enabled[nextIndex]!;
+      const modelIndex = Math.max(
+        0,
+        provider.models.findIndex((model) => model.id === state.selectedModel),
+      );
+      return {
+        ...state,
+        menuProviderIndex: nextIndex,
+        menuModelIndex: modelIndex >= 0 ? modelIndex : 0,
+      };
+    }
+    case "MENU_PROVIDER_NEXT": {
+      if (!state.modelMenuOpen) return state;
+      const enabled = getEnabledProviders();
+      if (enabled.length <= 1) return state;
+      const nextIndex = (state.menuProviderIndex + 1) % enabled.length;
+      return {
+        ...state,
+        menuProviderIndex: nextIndex,
+        menuModelIndex: 0,
+      };
+    }
+    case "CONFIRM_MENU_SELECTION": {
+      if (!state.modelMenuOpen) return state;
+      const provider = getEnabledProviders()[state.menuProviderIndex];
+      const model = provider?.models[state.menuModelIndex];
+      if (!provider || !model) {
+        return { ...state, modelMenuOpen: false };
+      }
+      return {
+        ...state,
+        selectedProviderId: provider.id as ModelProviderId,
+        selectedModel: model.id as GeminiModelId,
+        modelMenuOpen: false,
+      };
+    }
     case "SET_SERVER_ONLINE":
       return { ...state, serverOnline: action.online };
     case "SET_STREAM_CONNECTED":
@@ -86,15 +211,17 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
                 streaming: payload.role === "assistant",
               },
             ],
+            activity:
+              payload.role === "user"
+                ? { label: "Thinking…", phase: "thinking" }
+                : state.activity,
             metrics: { ...state.metrics, sessionStatus: "running" },
           };
         }
         case "token.streamed": {
           const payload = event.payload;
           const messages = [...state.messages];
-          const idx = messages.findIndex(
-            (m) => m.id === payload.messageId || m.streaming,
-          );
+          const idx = messages.findIndex((m) => m.id === payload.messageId);
           if (idx >= 0) {
             messages[idx] = {
               ...messages[idx]!,
@@ -109,19 +236,41 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
               streaming: true,
             });
           }
-          return { ...state, messages };
-        }
-        case "message.completed": {
-          const payload = event.payload;
-          const messages = state.messages.map((m) =>
-            m.streaming || m.id === payload.messageId
-              ? { ...m, content: payload.content, streaming: false }
-              : m,
-          );
           return {
             ...state,
             messages,
-            metrics: { ...state.metrics, sessionStatus: "completed" },
+            activity: { label: "Writing…", phase: "streaming" },
+          };
+        }
+        case "message.completed": {
+          const payload = event.payload;
+          const messages = [...state.messages];
+          const idx = messages.findIndex(
+            (m) =>
+              m.id === payload.messageId ||
+              (m.role === "assistant" && m.streaming),
+          );
+
+          if (idx >= 0) {
+            messages[idx] = {
+              id: payload.messageId,
+              role: "assistant",
+              content: payload.content,
+              streaming: false,
+            };
+          } else if (payload.content) {
+            messages.push({
+              id: payload.messageId,
+              role: "assistant",
+              content: payload.content,
+              streaming: false,
+            });
+          }
+
+          return {
+            ...state,
+            messages,
+            activity: null,
           };
         }
         case "tool.started": {
@@ -137,21 +286,31 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
                 startedAt: event.timestamp,
               },
             ],
+            activity: {
+              label: `Running ${payload.toolName}…`,
+              phase: "tool",
+            },
           };
         }
         case "tool.completed": {
           const payload = event.payload;
+          const traces = state.traces.map((t) => {
+            if (t.id !== payload.toolCallId) return t;
+            return {
+              ...t,
+              status: payload.error ? ("failed" as const) : ("completed" as const),
+              completedAt: event.timestamp,
+              ...(payload.error !== undefined ? { error: payload.error } : {}),
+            };
+          });
+          const stillRunning = traces.some((t) => t.status === "running");
           return {
             ...state,
-            traces: state.traces.map((t) => {
-              if (t.id !== payload.toolCallId) return t;
-              return {
-                ...t,
-                status: payload.error ? ("failed" as const) : ("completed" as const),
-                completedAt: event.timestamp,
-                ...(payload.error !== undefined ? { error: payload.error } : {}),
-              };
-            }),
+            traces,
+            activity:
+              stillRunning || hasStreamingAssistant(state.messages)
+                ? state.activity
+                : { label: "Thinking…", phase: "thinking" },
           };
         }
         case "cost.updated": {
@@ -164,7 +323,9 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
               outputTokens: payload.outputTokens,
               totalCost: payload.totalCost,
               currency: payload.currency,
+              sessionStatus: "completed",
             },
+            activity: null,
           };
         }
         case "error": {
@@ -179,6 +340,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
                 content: formatErrorMessage(payload.code, payload.message),
               },
             ],
+            activity: null,
             metrics: { ...state.metrics, sessionStatus: "failed" },
           };
         }

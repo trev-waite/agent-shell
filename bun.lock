@@ -50,6 +50,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@ai-sdk/google": "^3.0.83",
+        "@relay/types": "workspace:*",
         "ai": "^6.0.208",
         "zod": "^4.4.3",
       },

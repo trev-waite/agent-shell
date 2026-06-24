@@ -29,15 +29,36 @@ bun install
 # Configure environment (must live at monorepo root)
 cp .env.example .env
 # Edit .env and set GEMINI_API_KEY
+```
 
-# Terminal 1 — start runtime server
+Run the runtime and UI in **two terminals** (recommended):
+
+```bash
+# Terminal 1 — runtime server (loads .env, watches for changes)
 bun run dev:server
 
-# Terminal 2 — start Ink UI
+# Terminal 2 — Ink UI (needs a real TTY for keyboard input)
 bun run dev:terminal
 ```
 
-Type a prompt and press Enter. Press Esc or Ctrl+C to exit the UI — the runtime server keeps running.
+| Script | What it runs |
+|--------|----------------|
+| `bun run dev:server` | Fastify runtime at `http://127.0.0.1:4310` |
+| `bun run dev:terminal` | Ink chat UI (connects via `@relay/sdk`) |
+| `bun run dev` | Both via Turborepo — terminal input may not work; prefer two terminals |
+
+Type a prompt and press Enter. Press **Tab** or **Ctrl+O** to open the **model menu** — pick a Gemini model from the dropdown (OpenAI and Claude tabs are placeholders for future providers). While the agent works, a status line appears below your message in Chat. Press Esc or Ctrl+C to exit the UI — the runtime server keeps running.
+
+### Terminal controls
+
+| Key | Action |
+|-----|--------|
+| Enter | Send prompt |
+| Tab / Ctrl+O | Open model menu |
+| ↑↓ | Select model (menu open) |
+| ←→ | Switch provider tab (menu open) |
+| Esc | Close model menu, or exit when menu is closed |
+| Ctrl+C | Exit terminal (server keeps running) |
 
 ### Replay a previous session
 
@@ -52,7 +73,7 @@ bun run apps/terminal/src/index.tsx --session <session-id>
 │                     Process 2: Terminal                      │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │  Ink 7 UI (apps/terminal)                           │    │
-│  │  ChatPanel · TracePanel · MetricsPanel              │    │
+│  │  ChatPanel · TracePanel · MetricsPanel · ModelSelector      │    │
 │  └──────────────────────┬──────────────────────────────┘    │
 │                         │ @relay/sdk (SSE)                   │
 └─────────────────────────┼───────────────────────────────────┘
@@ -106,7 +127,8 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 
 | Method | HTTP | Purpose |
 |--------|------|---------|
-| `send({ prompt })` | `POST /sessions` | Start a new agent session; returns `{ sessionId }` |
+| `send({ prompt, model? })` | `POST /sessions` | Start a new agent session; returns `{ sessionId }` |
+| `listModels()` | `GET /models` | Provider registry + model lists (Gemini today) |
 | `subscribe({ sessionId, onEvent, … })` | `GET /sessions/:id/events` | Live SSE stream — tokens, tools, costs, errors |
 | `replay({ sessionId, onEvent, … })` | `GET /sessions/:id/replay` | Read-only replay of persisted events, then closes |
 
@@ -193,6 +215,8 @@ Replay reconstructs state **only from events**. No hidden state. Kill the server
 
 SQLite (via `bun:sqlite` + Drizzle ORM) is the **execution store**, not an analytics store. The server auto-creates tables on startup.
 
+**Local only — not in git:** the database lives at `RELAY_DB_PATH` (default `./data/relay.db`). The `data/` directory and all `*.db` / WAL files are listed in `.gitignore` and are never pushed to GitHub. Each developer (and each machine) gets its own event log.
+
 | Table | Purpose |
 |-------|---------|
 | `events` | Append-only source of truth |
@@ -229,7 +253,7 @@ packages/
   tools/         ← file.read, shell.exec implementations
   tool-registry/ ← tool abstraction layer
   sdk/           ← runtime client (SSE transport)
-  types/         ← shared event + system types
+  types/         ← shared event + system types, model provider registry
 ```
 
 Internal packages use the workspace protocol: `"@relay/sdk": "workspace:*"`
@@ -250,7 +274,9 @@ Turborepo manages build ordering, dev parallelization, and typechecking — not 
 ```bash
 bun run build       # Build all packages
 bun run typecheck   # Type-check all packages
-bun run dev         # Start server + terminal in parallel
+bun run dev:server  # Runtime only (direct Bun watch, loads root .env)
+bun run dev:terminal # Ink UI only (direct Bun watch)
+bun run dev         # Both via Turborepo (use two terminals instead for daily work)
 bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 ```
 
@@ -259,23 +285,24 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | — | Google Gemini API key (required, server only) |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Gemini model ID |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Default Gemini model ID (server + terminal fallback) |
 | `RELAY_PORT` | `4310` | Runtime server port |
 | `RELAY_DB_PATH` | `./data/relay.db` | SQLite database path |
 | `RELAY_URL` | `http://localhost:4310` | SDK connection URL (terminal / clients) |
 
-`.env` must live at the **monorepo root** (`agent-shell/.env`), not inside `apps/server/`. The server dev script loads `../../.env` automatically when run via Turbo.
+`.env` must live at the **monorepo root** (`agent-shell/.env`), not inside `apps/server/`. `dev:server` loads it via `bun --env-file=.env`.
 
 ## Troubleshooting
 
 | Issue | Fix |
 |-------|-----|
 | `GEMINI_API_KEY environment variable is required` | Ensure `.env` is at repo root with `GEMINI_API_KEY=...` (no spaces around `=`). Restart the server after editing. |
+| `Invalid task configuration` / Turbo TUI error on `dev:server` | Use the current `dev:server` script (direct Bun, not Turbo) or upgrade/pull latest |
 | Port already in use | Change `RELAY_PORT` in `.env` and set `RELAY_URL` to match |
-| Can't type in terminal UI | Use `bun run dev:terminal` (not via turbo) — Ink needs a direct TTY for keyboard input |
+| Can't type in terminal UI | Use `bun run dev:terminal` in its own terminal — Ink needs a direct TTY |
 | Stream shows **standby** | Normal before your first prompt |
 | Stream shows **disconnected** | Start runtime with `bun run dev:server` first; Metrics panel shows **Server: online** when ready |
-| Chat empty but metrics update | Restart server — SSE must replay persisted events on connect (fixed in current branch) |
+| Chat shows only your message during tool use | Restart server after pulling — tool-loop message history + activity indicator fixes require latest code |
 
 ## Performance Philosophy
 
