@@ -4,7 +4,7 @@ import { StatusDot } from "./ui/StatusDot.js";
 import type { FooterStatus } from "../projections/footer.js";
 
 const VERSION = "0.0.1";
-const HINTS = "Enter send · /help · Esc";
+const HINTS = "Enter send · /new · /help · Esc";
 
 interface FooterProps {
   status: FooterStatus;

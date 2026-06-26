@@ -50,3 +50,8 @@ export function preservePreferences(state: UIState): Pick<
 export function isPanelOverlay(panel: UIState["activeOverlay"]): boolean {
   return panel === "trace" || panel === "metrics";
 }
+
+/** True while the agent is thinking, streaming, or running a tool. */
+export function isSessionBusy(state: UIState): boolean {
+  return state.activity !== null || state.metrics.sessionStatus === "running";
+}

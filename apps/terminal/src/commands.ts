@@ -46,6 +46,12 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     actions: [{ type: "COLLAPSE_TRACE_FOCUS" }],
   },
   {
+    name: "new",
+    description: "Start a new conversation",
+    actions: [{ type: "NEW_SESSION" }],
+    message: "New conversation — next message starts a fresh session",
+  },
+  {
     name: "help",
     description: "List all commands",
     actions: [],
@@ -102,6 +108,7 @@ export function parseSlashCommand(input: string): SlashCommandResult | null {
     }
     return {
       actions: def.actions,
+      ...(def.message !== undefined ? { message: def.message } : {}),
     };
   }
 

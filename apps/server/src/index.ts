@@ -23,6 +23,38 @@ import {
 const PORT = Number(process.env.RELAY_PORT ?? 4310);
 const DB_PATH = process.env.RELAY_DB_PATH ?? "./data/relay.db";
 
+function replySessionActionError(
+  reply: { status: (code: number) => { send: (body: unknown) => unknown } },
+  err: unknown,
+  options?: { checkpointNotFoundStatus?: 400 | 404 },
+): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  const checkpointStatus = options?.checkpointNotFoundStatus ?? 404;
+
+  if (message === "Session not found") {
+    reply.status(404).send({ error: message });
+    return true;
+  }
+  if (message === "Session is already running") {
+    reply.status(409).send({ error: message });
+    return true;
+  }
+  if (message === "No checkpoints found for session") {
+    reply.status(checkpointStatus).send({ error: message });
+    return true;
+  }
+  if (message.startsWith("Checkpoint not found:")) {
+    reply.status(checkpointStatus).send({ error: message });
+    return true;
+  }
+  if (message.startsWith("Invalid checkpoint")) {
+    reply.status(400).send({ error: message });
+    return true;
+  }
+
+  return false;
+}
+
 async function main() {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -72,6 +104,36 @@ async function main() {
     });
     return { sessionId };
   });
+
+  app.post<{ Params: { id: string }; Body: { prompt: string; model?: string } }>(
+    "/sessions/:id/messages",
+    async (request, reply) => {
+      const { id: sessionId } = request.params;
+      const { prompt, model } = request.body ?? {};
+
+      if (!prompt || typeof prompt !== "string") {
+        return reply.status(400).send({ error: "prompt is required" });
+      }
+
+      if (model !== undefined && !isGeminiModelId(model)) {
+        return reply.status(400).send({ error: `Unsupported model: ${model}` });
+      }
+
+      try {
+        const continuedSessionId = await runtime.continue({
+          sessionId,
+          prompt,
+          ...(model !== undefined ? { model } : {}),
+        });
+        return { sessionId: continuedSessionId };
+      } catch (err) {
+        if (replySessionActionError(reply, err, { checkpointNotFoundStatus: 400 })) {
+          return;
+        }
+        throw err;
+      }
+    },
+  );
 
   app.get<{ Params: { id: string }; Querystring: { after?: string } }>(
     "/sessions/:id/events",
@@ -177,23 +239,8 @@ async function main() {
         });
         return { sessionId: resumedSessionId };
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (message === "Session not found") {
-          return reply.status(404).send({ error: message });
-        }
-        if (message === "Session is already running") {
-          return reply.status(409).send({ error: message });
-        }
-        if (
-          message === "No checkpoints found for session" ||
-          message.startsWith("Checkpoint not found:")
-        ) {
-          return reply.status(404).send({ error: message });
-        }
-        if (
-          message.startsWith("Invalid checkpoint")
-        ) {
-          return reply.status(400).send({ error: message });
+        if (replySessionActionError(reply, err)) {
+          return;
         }
         throw err;
       }

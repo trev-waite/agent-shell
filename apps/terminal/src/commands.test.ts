@@ -42,6 +42,12 @@ describe("slash commands", () => {
     expect(result?.actions).toEqual([]);
   });
 
+  test("/new starts a fresh conversation", () => {
+    const result = parseSlashCommand("/new");
+    expect(result?.actions).toEqual([{ type: "NEW_SESSION" }]);
+    expect(result?.message).toContain("fresh session");
+  });
+
   test("unknown command returns error message", () => {
     const result = parseSlashCommand("/foobar");
     expect(result?.message).toContain("Unknown command");

@@ -69,3 +69,9 @@ export function formatTraceResult(output: unknown): string {
   }
   return String(output);
 }
+
+export function truncateToWidth(text: string, maxCols: number): string {
+  const singleLine = text.replace(/\s+/g, " ").trim();
+  if (singleLine.length <= maxCols) return singleLine;
+  return singleLine.slice(0, Math.max(0, maxCols - 1)) + "…";
+}

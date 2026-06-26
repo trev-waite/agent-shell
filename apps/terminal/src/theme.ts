@@ -1,7 +1,7 @@
 export type ColorScheme = "dark" | "light";
 export type ColorSchemePreference = "auto" | ColorScheme;
 
-export type ThemeColorKey = "text" | "muted" | "border" | "status" | "motion" | "error" | "warning" | "user" | "agent";
+export type ThemeColorKey = "text" | "muted" | "border" | "status" | "motion" | "error" | "warning" | "user" | "agent" | "queueBg";
 
 export interface Theme {
   text: string;
@@ -13,6 +13,7 @@ export interface Theme {
   agent: string;
   error: string;
   warning: string;
+  queueBg: string;
 }
 
 /** Earthy accent palette — orange (#CB7A5C) intentionally excluded. */
@@ -33,6 +34,7 @@ export const darkTheme: Theme = {
   agent: palette.slate,
   error: "red",
   warning: "gray",
+  queueBg: "#2e2e28",
 };
 
 export const lightTheme: Theme = {
@@ -45,6 +47,7 @@ export const lightTheme: Theme = {
   agent: palette.slate,
   error: "red",
   warning: "gray",
+  queueBg: "#ddd8ce",
 };
 
 export function resolveTheme(scheme: ColorScheme): Theme {
@@ -54,6 +57,9 @@ export function resolveTheme(scheme: ColorScheme): Theme {
 export const COMPACT_BREAKPOINT = 50;
 export const HINT_BREAKPOINT = 60;
 export const SESSION_ID_BREAKPOINT = 100;
+
+/** Rows/columns of padding between the shell and the terminal edge. */
+export const EDGE_PADDING = 1;
 
 export type LayoutMode = "wide" | "medium" | "compact";
 

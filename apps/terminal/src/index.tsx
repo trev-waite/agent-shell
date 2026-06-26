@@ -13,7 +13,14 @@ import {
   isSlashCommand,
   parseSlashCommand,
 } from "./commands.js";
-import { uiReducer, initialState, type UIAction, type UIState } from "./state.js";
+import {
+  uiReducer,
+  initialState,
+  type QueuedMessage,
+  type UIAction,
+  type UIState,
+} from "./state.js";
+import { isSessionBusy } from "./stateHelpers.js";
 
 const client = createClient();
 
@@ -39,14 +46,25 @@ function submitPrompt(
   state: UIState,
   dispatch: Dispatch<UIAction>,
   subscribeToSession: (sessionId: string, lastEventId?: string) => void,
+  setSubmitPending: (pending: boolean) => void,
+  restoreOnFailure?: QueuedMessage,
 ): void {
-  dispatch({ type: "SET_INPUT", input: "" });
+  setSubmitPending(true);
 
-  client.send({ prompt, model: state.selectedModel }).then(({ sessionId }) => {
+  const request = state.sessionId
+    ? { prompt, model: state.selectedModel, sessionId: state.sessionId }
+    : { prompt, model: state.selectedModel };
+
+  client.send(request).then(({ sessionId }) => {
     dispatch({ type: "SET_SESSION", sessionId });
-    subscribeToSession(sessionId);
+    subscribeToSession(sessionId, state.lastEventId ?? undefined);
   }).catch((error) => {
+    if (restoreOnFailure) {
+      dispatch({ type: "RESTORE_QUEUE_HEAD", item: restoreOnFailure });
+    }
     dispatch({ type: "SET_COMMAND_NOTICE", message: formatSubmitError(error) });
+  }).finally(() => {
+    setSubmitPending(false);
   });
 }
 
@@ -54,18 +72,36 @@ function handleInputSubmit(
   state: UIState,
   dispatch: Dispatch<UIAction>,
   subscribeToSession: (sessionId: string, lastEventId?: string) => void,
+  options: {
+    submitPending: boolean;
+    setSubmitPending: (pending: boolean) => void;
+    endSessionStream: () => void;
+  },
 ): void {
   const prompt = state.input.trim();
   if (!prompt) return;
 
   if (isSlashCommand(prompt)) {
     const slash = parseSlashCommand(prompt);
-    if (slash) dispatchSlashResult(dispatch, slash);
+    if (slash) {
+      if (slash.actions.some((action) => action.type === "NEW_SESSION")) {
+        options.endSessionStream();
+      }
+      dispatchSlashResult(dispatch, slash);
+    }
     return;
   }
 
   if (state.serverOnline === false) return;
-  submitPrompt(prompt, state, dispatch, subscribeToSession);
+
+  dispatch({ type: "SET_INPUT", input: "" });
+
+  if (options.submitPending || isSessionBusy(state)) {
+    dispatch({ type: "ENQUEUE_MESSAGE", prompt });
+    return;
+  }
+
+  submitPrompt(prompt, state, dispatch, subscribeToSession, options.setSubmitPending);
 }
 
 function TerminalApp() {
@@ -74,6 +110,65 @@ function TerminalApp() {
   const layout = useLayoutMode();
   const { exit } = useApp();
   const unsubscribeRef = useRef<(() => void) | null>(null);
+  const submitPendingRef = useRef(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const endSessionStream = useCallback(() => {
+    unsubscribeRef.current?.();
+    unsubscribeRef.current = null;
+    dispatch({ type: "SET_STREAM_CONNECTED", connected: false });
+  }, []);
+
+  const subscribeToSession = useCallback((sessionId: string, lastEventId?: string) => {
+    unsubscribeRef.current?.();
+    dispatch({ type: "SET_STREAM_CONNECTED", connected: false });
+
+    const unsub = client.subscribe({
+      sessionId,
+      ...(lastEventId !== undefined ? { lastEventId } : {}),
+      onConnect: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: true }),
+      onEvent: (event) => dispatch({ type: "EVENT", event }),
+      onError: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
+      onClose: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
+    });
+
+    unsubscribeRef.current = unsub;
+  }, []);
+
+  const flushMessageQueue = useCallback(() => {
+    if (submitPendingRef.current) return;
+
+    const current = stateRef.current;
+    if (current.serverOnline === false) return;
+    if (isSessionBusy(current)) return;
+    if (current.messageQueue.length === 0) return;
+
+    const head = current.messageQueue[0]!;
+    dispatch({ type: "REMOVE_QUEUE_HEAD" });
+
+    const snapshot = stateRef.current;
+    submitPrompt(
+      head.prompt,
+      snapshot,
+      dispatch,
+      subscribeToSession,
+      (pending) => {
+        submitPendingRef.current = pending;
+      },
+      head,
+    );
+  }, [subscribeToSession]);
+
+  useEffect(() => {
+    flushMessageQueue();
+  }, [
+    state.activity,
+    state.metrics.sessionStatus,
+    state.messageQueue.length,
+    state.serverOnline,
+    flushMessageQueue,
+  ]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -117,22 +212,6 @@ function TerminalApp() {
     };
   }, []);
 
-  const subscribeToSession = useCallback((sessionId: string, lastEventId?: string) => {
-    unsubscribeRef.current?.();
-    dispatch({ type: "SET_STREAM_CONNECTED", connected: false });
-
-    const unsub = client.subscribe({
-      sessionId,
-      ...(lastEventId !== undefined ? { lastEventId } : {}),
-      onConnect: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: true }),
-      onEvent: (event) => dispatch({ type: "EVENT", event }),
-      onError: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
-      onClose: () => dispatch({ type: "SET_STREAM_CONNECTED", connected: false }),
-    });
-
-    unsubscribeRef.current = unsub;
-  }, []);
-
   useEffect(() => {
     const args = process.argv.slice(2);
     const sessionIdx = args.indexOf("--session");
@@ -170,7 +249,13 @@ function TerminalApp() {
   useInput((input, key) => {
     const result = handleKey(input, key, { state, layout, exit }, dispatch);
     if (result === "submit") {
-      handleInputSubmit(state, dispatch, subscribeToSession);
+      handleInputSubmit(state, dispatch, subscribeToSession, {
+        submitPending: submitPendingRef.current,
+        setSubmitPending: (pending) => {
+          submitPendingRef.current = pending;
+        },
+        endSessionStream,
+      });
     }
   });
 

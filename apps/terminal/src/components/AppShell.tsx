@@ -1,12 +1,13 @@
 import { Box, Text } from "ink";
 import { useTheme } from "../hooks/ThemeContext.js";
 import { deriveFooterStatus } from "../projections/footer.js";
-import type { LayoutConfig } from "../theme.js";
+import { EDGE_PADDING, type LayoutConfig } from "../theme.js";
 import type { UIState } from "../state.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { Footer } from "./Footer.js";
 import { Header } from "./Header.js";
 import { InputBox } from "./InputBox.js";
+import { MessageQueue } from "./MessageQueue.js";
 import { OverlayStack } from "./OverlayStack.js";
 
 interface AppShellProps {
@@ -23,16 +24,24 @@ export function AppShell({ state, layout }: AppShellProps) {
   );
 
   return (
-    <Box flexDirection="column" height="100%" width={layout.columns}>
-      <Header
-        serverOnline={state.serverOnline}
-        sessionId={state.sessionId}
-        metrics={state.metrics}
-        layout={layout}
-      />
+    <Box
+      flexDirection="column"
+      width={layout.columns}
+      height={layout.rows}
+      paddingTop={EDGE_PADDING}
+      paddingBottom={EDGE_PADDING}
+    >
+      <Box flexShrink={0}>
+        <Header
+          serverOnline={state.serverOnline}
+          sessionId={state.sessionId}
+          metrics={state.metrics}
+          layout={layout}
+        />
+      </Box>
 
       {state.serverOnline === false && (
-        <Box marginTop={1} paddingX={1} width={layout.columns}>
+        <Box flexShrink={0} marginTop={1} paddingX={1} width={layout.columns}>
           <Text color={theme.error}>
             Runtime server offline — start with: bun run dev:server
           </Text>
@@ -46,8 +55,9 @@ export function AppShell({ state, layout }: AppShellProps) {
         layout={layout}
       />
 
-      <Box flexDirection="column" marginTop={4} width={layout.columns}>
+      <Box flexDirection="column" flexShrink={0} width={layout.columns}>
         <OverlayStack state={state} layout={layout} />
+        <MessageQueue items={state.messageQueue} layout={layout} />
         <InputBox
           value={state.input}
           layout={layout}

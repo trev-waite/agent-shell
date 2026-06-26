@@ -14,10 +14,12 @@ export interface ReActLoopOptions {
   emit: EventHandler;
   model?: string;
   signal?: AbortSignal;
-  /** Restore loop state from a persisted checkpoint (via runtime.rerun). */
+  /** Restore loop state from a persisted checkpoint (via runtime.rerun / runtime.continue). */
   resume?: {
     messages: Message[];
     iteration: number;
+    /** Append a new user turn and emit message.started (via runtime.continue). */
+    appendUserPrompt?: string;
   };
 }
 
@@ -42,6 +44,18 @@ export class ReActLoop implements ExecutionLoop {
 
     if (resume) {
       this.messages = [...resume.messages];
+      if (resume.appendUserPrompt !== undefined) {
+        const content = sanitize(resume.appendUserPrompt);
+        this.messages.push({ role: "user", content });
+
+        emit({
+          id: ulid(),
+          sessionId,
+          type: "message.started",
+          timestamp: Date.now(),
+          payload: { role: "user", content },
+        });
+      }
     } else {
       this.messages.push({ role: "user", content: sanitize(prompt) });
 
@@ -323,7 +337,7 @@ export class ReActLoop implements ExecutionLoop {
   }
 
   resume(): void {
-    throw new Error("Resume from checkpoint is handled by runtime.rerun()");
+    throw new Error("Resume from checkpoint is handled by runtime.rerun() and runtime.continue()");
   }
 }
 

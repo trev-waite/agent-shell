@@ -47,14 +47,14 @@ bun run dev:terminal
 | `bun run dev:terminal` | Ink chat UI (connects via `@relay/sdk`) |
 | `bun run dev` | Both via Turborepo — terminal input may not work; prefer two terminals |
 
-Type a prompt and press Enter. Use **/** for a command palette (`/model`, `/trace`, `/metrics`, `/help`). Press **Tab** or **⌘O** (Ctrl+O on Linux) to open the model picker. Tool activity appears inline under your message; open **/trace** or **/metrics** for full detail in overlay panels above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
+Type a prompt and press Enter. Follow-up messages continue the same conversation (full history is sent to the model). Use **/** for a command palette (`/model`, `/trace`, `/metrics`, `/new`, `/help`). Press **Tab** or **⌘O** (Ctrl+O on Linux) to open the model picker. If the agent is still replying, your next message is **queued** and shown above the input bar until it sends. Tool activity appears inline under your message; open **/trace** or **/metrics** for full detail in overlay panels above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
 
 ### Terminal controls
 
 | Key | Action |
 |-----|--------|
 | Enter | Send prompt (works with trace/metrics overlays open) |
-| `/` | Slash command palette — `/model`, `/trace`, `/metrics`, `/theme`, `/help` |
+| `/` | Slash command palette — `/model`, `/trace`, `/metrics`, `/theme`, `/new`, `/help` |
 | Tab / ⌘O (Ctrl+O) | Open model picker overlay |
 | ↑↓ | Navigate slash palette or model list |
 | ←→ | Switch provider tab (model picker) |
@@ -62,6 +62,14 @@ Type a prompt and press Enter. Use **/** for a command palette (`/model`, `/trac
 | ⌘⇧T / ⌘⇧M | Toggle trace / metrics overlay |
 | Esc | Close top overlay, or exit when none open |
 | Ctrl+C | Exit terminal (server keeps running) |
+
+### Multi-turn conversations
+
+The terminal keeps one **session** alive across prompts. The first message calls `POST /sessions`; follow-ups call `POST /sessions/:id/messages`, which loads the latest checkpoint and appends your new user message to the ReAct loop history.
+
+Use **`/new`** to clear the UI and start a fresh session on the next send. Model and theme preferences are preserved.
+
+While the agent is thinking, streaming, or running tools, additional prompts are **queued** (highlighted above the input) and sent automatically when the current turn finishes.
 
 ### Replay a previous session
 
@@ -87,6 +95,18 @@ curl -X POST http://127.0.0.1:4310/sessions/<session-id>/rerun \
 ```
 
 Then attach with the terminal replay command above, or use `client.rerun()` + `client.subscribe()` from the SDK.
+
+### Continue a conversation (follow-up message)
+
+Send another user message on an existing session without starting over:
+
+```bash
+curl -X POST http://127.0.0.1:4310/sessions/<session-id>/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"prompt":"What did I just ask?"}'
+```
+
+The runtime restores the latest checkpoint, appends the new user message, and runs the ReAct loop with full prior context. Returns `{ sessionId }` (same id).
 
 ## Architecture
 
@@ -134,8 +154,10 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 ```
 ┌──────────────────┐     send()        POST /sessions
 │  Your client     │ ─────────────────►  starts execution
-│  (terminal,      │
-│   script, web)   │     subscribe()   GET /sessions/:id/events  (SSE, live)
+│  (terminal,      │     send({ sessionId })  POST /sessions/:id/messages
+│   script, web)   │ ─────────────────►  continue conversation
+│                  │
+│                  │     subscribe()   GET /sessions/:id/events  (SSE, live)
 │                  │ ◄─────────────────  token.streamed, tool.*, cost.updated, …
 │                  │
 │                  │     replay()      GET /sessions/:id/replay   (SSE, read-only)
@@ -155,6 +177,7 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 | Method | HTTP | Purpose |
 |--------|------|---------|
 | `send({ prompt, model? })` | `POST /sessions` | Start a new agent session; returns `{ sessionId }` |
+| `send({ prompt, sessionId, model? })` | `POST /sessions/:id/messages` | Continue an existing session with a follow-up message; returns `{ sessionId }` |
 | `listModels()` | `GET /models` | Provider registry + model lists (Gemini today) |
 | `listCheckpoints(sessionId)` | `GET /sessions/:id/checkpoints` | Checkpoint ids, labels, and iteration numbers |
 | `rerun({ sessionId, checkpointId?, model? })` | `POST /sessions/:id/rerun` | Resume execution from a checkpoint; returns `{ sessionId }` |
@@ -170,9 +193,12 @@ Every `onEvent` callback receives a typed `RelayEvent` from `@relay/types` — t
 **`apps/terminal`** — the reference client:
 
 1. **New prompt** — `client.send()` returns a `sessionId`, then `client.subscribe()` opens the live stream. Events flow into a React reducer (`state.ts`) that builds chat messages, tool traces, and metrics.
-2. **Session replay** — `bun run apps/terminal/src/index.tsx --session <id>` calls `client.replay()` to rebuild history from the event log, then `subscribe()` to pick up anything still running.
-3. **Checkpoint resume** — `client.rerun({ sessionId })` restores the ReAct loop from the latest `checkpoint.saved` snapshot and continues execution on the same session.
-4. **Disposable UI** — closing the terminal calls the unsubscribe function; the runtime server and SQLite log keep running untouched.
+2. **Follow-up prompts** — the terminal passes `sessionId` to `client.send()`, which calls `POST /sessions/:id/messages`. Chat history stays on screen; the model sees prior turns via the checkpoint.
+3. **Message queue** — prompts sent while the agent is busy are queued above the input and auto-sent when the turn completes.
+4. **Session replay** — `bun run apps/terminal/src/index.tsx --session <id>` calls `client.replay()` to rebuild history from the event log, then `subscribe()` to pick up anything still running.
+5. **Checkpoint resume** — `client.rerun({ sessionId })` restores the ReAct loop from the latest `checkpoint.saved` snapshot and continues execution on the same session (after failure/cancel, not for normal chat).
+6. **New conversation** — `/new` clears the UI and drops the session id; the next send starts fresh.
+7. **Disposable UI** — closing the terminal calls the unsubscribe function; the runtime server and SQLite log keep running untouched.
 
 The terminal does **not** load `GEMINI_API_KEY` or any server secrets — only `RELAY_URL` (optional) to find the runtime. All LLM and tool execution stays in Process 1.
 
@@ -207,6 +233,9 @@ const stop = client.subscribe({
   onError: (err) => console.error("stream error", err),
 });
 
+// Follow-up on the same session (model sees prior context)
+await client.send({ sessionId, prompt: "Now summarize what you found" });
+
 // Later: stop(); or attach to an existing session with replay + subscribe
 
 const { checkpoints } = await client.listCheckpoints(sessionId);
@@ -236,16 +265,16 @@ Every state change is an **append-only, immutable event**:
 
 Session status (`idle`, `running`, `paused`, `completed`, `failed`, `cancelled`) is **derived from events only** — never stored as authoritative state.
 
-### Replay vs rerun
+### Replay vs rerun vs continue
 
-| | Replay | Rerun (resume) |
-|---|--------|----------------|
-| **What** | Stream historical events from SQLite | Re-execute from a checkpoint |
-| **Re-executes LLM?** | No | Yes |
-| **MVP status** | Implemented | Implemented |
-| **Use case** | UI reconnect, audit, crash recovery view | Resume after error, cancel, or max-iterations |
+| | Replay | Continue (`/messages`) | Rerun (resume) |
+|---|--------|------------------------|----------------|
+| **What** | Stream historical events from SQLite | Append a new user message and run the loop | Re-execute from a checkpoint |
+| **Re-executes LLM?** | No | Yes | Yes |
+| **New user message?** | No | Yes | No (restores mid-turn state) |
+| **Use case** | UI reconnect, audit, crash recovery view | Multi-turn chat | Resume after error, cancel, or max-iterations |
 
-**Checkpoints** are saved automatically after each tool-loop iteration (and on completion). Each `checkpoint.saved` event carries the full message history and iteration count. `rerun` restores that state and continues the ReAct loop without re-emitting the original user message.
+**Checkpoints** are saved automatically after each tool-loop iteration (and on completion). Each `checkpoint.saved` event carries the full message history and iteration count. `continue` and `rerun` both restore from the latest checkpoint; `continue` appends a new user turn and resets the per-turn tool iteration budget, while `rerun` resumes mid-turn without re-emitting the original user message.
 
 Replay reconstructs state **only from events**. No hidden state. Kill the server, restart it, replay a session — the transcript matches exactly.
 
@@ -269,13 +298,29 @@ Messages are never written directly by the loop or tools — only projected by t
 
 The server-side runtime (`@relay/runtime`) is for execution internals and contributors — not for UI clients. Use [`@relay/sdk`](#relay-sdk-relaysdk) from anything that renders or observes.
 
+**HTTP routes** (Fastify, `apps/server`):
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/sessions` | Start new session |
+| `POST` | `/sessions/:id/messages` | Continue session with follow-up message |
+| `POST` | `/sessions/:id/rerun` | Resume from checkpoint |
+| `POST` | `/sessions/:id/cancel` | Cancel in-flight execution |
+| `GET` | `/sessions/:id/events` | Live SSE stream |
+| `GET` | `/sessions/:id/replay` | Read-only SSE replay |
+| `GET` | `/sessions/:id/checkpoints` | List checkpoints |
+| `GET` | `/sessions` | List sessions |
+| `GET` | `/models` | Provider/model registry |
+| `GET` | `/health` | Health check |
+
 ```typescript
-runtime.execute({ prompt })           // Start new session
-runtime.replay({ sessionId })         // Stream historical events (read-only)
-runtime.rerun({ sessionId, checkpointId? })  // Resume from checkpoint
-runtime.listCheckpoints(sessionId)    // List saved checkpoints for a session
-runtime.cancel({ sessionId })         // Abort in-flight execution
-runtime.subscribe({ sessionId })      // Live event fanout (in-process)
+runtime.execute({ prompt })                    // Start new session
+runtime.continue({ sessionId, prompt })        // Follow-up message on existing session
+runtime.replay({ sessionId })                  // Stream historical events (read-only)
+runtime.rerun({ sessionId, checkpointId? })    // Resume from checkpoint (mid-turn)
+runtime.listCheckpoints(sessionId)             // List saved checkpoints for a session
+runtime.cancel({ sessionId })                  // Abort in-flight execution
+runtime.subscribe({ sessionId })               // Live event fanout (in-process)
 ```
 
 ## Monorepo
@@ -344,6 +389,7 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 | Stream shows **standby** | Normal before your first prompt |
 | Stream shows **disconnected** | Start runtime with `bun run dev:server` first; header status dot turns green when ready |
 | Trace/metrics overlay blocks typing | Overlays stay open while you type; press Esc to dismiss |
+| Queued message not sending | Wait for the current turn to finish (status shows DONE), or use `/new` to reset |
 
 ## Performance Philosophy
 

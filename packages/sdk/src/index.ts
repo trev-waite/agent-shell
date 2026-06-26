@@ -8,6 +8,8 @@ export interface SendOptions {
   prompt: string;
   /** Provider model id (e.g. gemini-3.1-flash-lite). Validated server-side per provider. */
   model?: string;
+  /** Continue an existing session with a follow-up message instead of starting a new one. */
+  sessionId?: string;
 }
 
 export interface ProviderModelsInfo {
@@ -67,7 +69,11 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
 
   return {
     async send(options: SendOptions): Promise<{ sessionId: string }> {
-      const response = await fetch(`${baseUrl}/sessions`, {
+      const url = options.sessionId
+        ? `${baseUrl}/sessions/${options.sessionId}/messages`
+        : `${baseUrl}/sessions`;
+
+      const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
