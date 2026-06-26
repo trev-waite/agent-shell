@@ -3,7 +3,7 @@ import { ulid } from "ulid";
 import type { RelayEvent, ExecutionStore, EventSink } from "@relay/types";
 import type { LLMProvider } from "@relay/providers";
 import { createToolRegistry } from "@relay/tool-registry";
-import { createTestCloudDeps } from "./test-support/cloud-deps.js";
+import { createTestSeamDeps } from "./test-support/seam-deps.js";
 import { Runtime } from "./runtime.js";
 
 function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
@@ -115,12 +115,12 @@ describe("Runtime invariants", () => {
       },
     };
 
-    const cloud = createTestCloudDeps();
+    const seams = createTestSeamDeps();
     const runtime = new Runtime({
       store,
       eventSink,
-      sessionCoordinator: cloud.sessionCoordinator,
-      livePublisher: cloud.livePublisher,
+      sessionCoordinator: seams.sessionCoordinator,
+      livePublisher: seams.livePublisher,
       provider: createStreamingProvider((onToken) => {
         onToken("hello");
         expect(fanoutLog).toContain("token.streamed");
@@ -152,12 +152,12 @@ describe("Runtime invariants", () => {
       releaseStream = resolve;
     });
 
-    const cloud = createTestCloudDeps();
+    const seams = createTestSeamDeps();
     const runtime = new Runtime({
       store,
       eventSink: createMockEventSink(store),
-      sessionCoordinator: cloud.sessionCoordinator,
-      livePublisher: cloud.livePublisher,
+      sessionCoordinator: seams.sessionCoordinator,
+      livePublisher: seams.livePublisher,
       provider: {
         async stream(opts) {
           await streamGate;
@@ -203,12 +203,12 @@ describe("Runtime invariants", () => {
     const observerA: string[] = [];
     const observerB: string[] = [];
 
-    const cloud = createTestCloudDeps();
+    const seams = createTestSeamDeps();
     const runtime = new Runtime({
       store,
       eventSink: createMockEventSink(store),
-      sessionCoordinator: cloud.sessionCoordinator,
-      livePublisher: cloud.livePublisher,
+      sessionCoordinator: seams.sessionCoordinator,
+      livePublisher: seams.livePublisher,
       provider: {
         async stream(opts) {
           await new Promise((resolve) => setTimeout(resolve, 20));

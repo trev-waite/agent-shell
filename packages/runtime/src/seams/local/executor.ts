@@ -4,7 +4,7 @@ import type {
   ExecutionTask,
   SessionCoordinator,
 } from "@relay/types";
-import type { Runtime } from "../runtime.js";
+import type { Runtime } from "../../runtime.js";
 
 export interface LocalDurableExecutorOptions {
   runtime: Runtime;
@@ -12,7 +12,7 @@ export interface LocalDurableExecutorOptions {
   workerId: string;
 }
 
-/** In-process executor — swap for queue/Temporal dispatch in cloud deployments. */
+/** Local adapter — runs loop in-process. Remote: `packages/dispatch` (queue/Temporal). */
 export function createLocalDurableExecutor(opts: LocalDurableExecutorOptions): DurableExecutor {
   const { runtime, coordinator } = opts;
 

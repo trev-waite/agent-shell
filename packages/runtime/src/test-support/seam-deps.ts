@@ -1,9 +1,9 @@
 import {
   createLocalLiveEventPublisher,
   createLocalSessionCoordinator,
-} from "../cloud/index.js";
+} from "../seams/local/index.js";
 
-export function createTestCloudDeps(onCancel?: (sessionId: string) => void) {
+export function createTestSeamDeps(onCancel?: (sessionId: string) => void) {
   return {
     livePublisher: createLocalLiveEventPublisher(),
     sessionCoordinator: createLocalSessionCoordinator(

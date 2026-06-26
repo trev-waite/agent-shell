@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import type { EventHandler, LiveEventPublisher, RelayEvent } from "@relay/types";
 
-/** In-process live fanout — swap for Redis/NATS in multi-node deployments. */
+/** Local adapter — in-process EventEmitter. Remote: `packages/pubsub` (Redis/NATS). */
 export function createLocalLiveEventPublisher(): LiveEventPublisher {
   const bus = new EventEmitter();
   bus.setMaxListeners(100);

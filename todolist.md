@@ -2,6 +2,8 @@
 
 Track deferred work, optimizations, and North Star follow-ups.
 
+**Terminology:** A **seam** is a swappable interface boundary — see [README § What is a seam?](README.md#what-is-a-seam). **Local adapter** = today's in-process impl (`createLocal*`). **Remote adapter** = future distributed impl (`createRedis*`, `createQueue*`, …).
+
 ---
 
 ## High priority
@@ -14,7 +16,7 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 ---
 
-## Cloud harness — structural (before infra)
+## Platform seams — structural (before infra)
 
 - [ ] **Auth seam** — `AuthContext` on server routes; optional `headers` / `getToken()` hook on `@relay/sdk`. Can be no-op locally.
 
@@ -28,9 +30,9 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 ---
 
-## Cloud deployment blueprint
+## Distributed deployment blueprint
 
-Reference for splitting today's monolith. **Local today:** everything in `apps/server` (one Bun process). **Cloud target:** gateway + worker pods + shared infra.
+Reference for splitting today's monolith. **Local today:** everything in `apps/server` (one Bun process) with `seams/local` adapters. **Distributed target:** gateway + worker pods + shared infra with remote adapters.
 
 ### Who uses `@relay/sdk`
 
@@ -55,7 +57,7 @@ Reference for splitting today's monolith. **Local today:** everything in `apps/s
 ### SessionCoordinator — not a pod
 
 - **Infra:** Redis, etcd, or Postgres advisory locks.
-- **Code:** `packages/coordination` → `createRedisSessionCoordinator()` implements `SessionCoordinator` from `@relay/types`.
+- **Code:** `packages/coordination` → `createRedisSessionCoordinator()` implements `SessionCoordinator` from `@relay/types/seams`.
 - **Used by:** gateway (`resolveOwner`, `routeCancel`) and workers (`acquireLease`, `releaseLease`, `renewLease`).
 - **Maps:** `sessionId → workerId` with TTL leases.
 
@@ -92,7 +94,7 @@ packages/
   storage/        remote EventSink + ExecutionStore (Postgres/S3) — extend existing
 ```
 
-### Implementation checklist (cloud split)
+### Implementation checklist (distributed split)
 
 - [ ] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
 - [ ] **`apps/gateway`** — Slim `apps/server`: HTTP/SSE only; swap local executor for queue executor; no direct ReActLoop.
@@ -117,7 +119,7 @@ packages/
 
 - [ ] **Native runtime rewrite** — Rust/Go executor once interfaces stabilize; SDK contract stays unchanged.
 
-- [ ] **Remote event store** — Swap SQLite for shared append-only log; see [Cloud deployment blueprint](#cloud-deployment-blueprint). `EventSink` is the seam.
+- [ ] **Remote event store** — Swap SQLite for shared append-only log; see [Distributed deployment blueprint](#distributed-deployment-blueprint). `EventSink` is the seam.
 
 - [ ] **Temporal / durable worker handoff** — Alternative to queue: Temporal-backed `DurableExecutor` on gateway; activities map to ReAct iterations.
 
@@ -133,12 +135,12 @@ packages/
 
 ## Done
 
-### 2026-06-26 — Cloud seam stubs + interface extensions
+### 2026-06-26 — Platform seam adapters + interface extensions
 
-- [x] **Extended cloud interfaces** — `DurableExecutor` (execute/continue/rerun/cancel/getStatus), `SessionCoordinator` (lease/affinity), `LiveEventPublisher`, typed `ExecutionTask`.
-- [x] **Local stub implementations** — `createLocalDurableExecutor`, `createLocalSessionCoordinator`, `createLocalLiveEventPublisher` in `@relay/runtime`.
+- [x] **Seam interfaces** (`@relay/types/seams`) — `DurableExecutor`, `SessionCoordinator`, `LiveEventPublisher`, `EventSink`, typed `ExecutionTask`.
+- [x] **Local adapters** — `createLocal*` in `@relay/runtime/seams/local`.
 - [x] **Wired in apps/server** — HTTP mutations go through `DurableExecutor`; runtime uses coordinator + live publisher.
-- [x] **Cloud layer diagram** — Mermaid architecture diagram in README.
+- [x] **Platform seams diagram** — Mermaid architecture diagram in README.
 
 ### 2026-06-26 — North Star alignment
 
@@ -154,4 +156,4 @@ packages/
 
 Add new items under the appropriate priority section. Move completed items to **Done** with a date. Link to issues or PRs when they exist.
 
-**For agents:** grep `Cloud deployment blueprint` for the gateway/worker/coordinator split. Local stubs live in `packages/runtime/src/cloud/`. HTTP mutations in `apps/server` go through `createLocalDurableExecutor` today.
+**For agents:** grep `Distributed deployment blueprint` for the gateway/worker split. Local adapters: `packages/runtime/src/seams/local/`. Interfaces: `packages/types/src/seams.ts`. HTTP mutations use `createLocalDurableExecutor`.

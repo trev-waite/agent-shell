@@ -3,7 +3,7 @@ import { ulid } from "ulid";
 import type { RelayEvent, ExecutionStore, EventSink } from "@relay/types";
 import type { LLMProvider } from "@relay/providers";
 import { createToolRegistry } from "@relay/tool-registry";
-import { createTestCloudDeps } from "./test-support/cloud-deps.js";
+import { createTestSeamDeps } from "./test-support/seam-deps.js";
 import { Runtime } from "./runtime.js";
 
 function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
@@ -92,12 +92,12 @@ describe("Runtime.rerun", () => {
     ];
 
     const store = createMockStore(priorEvents);
-    const cloud = createTestCloudDeps();
+    const seams = createTestSeamDeps();
     const runtime = new Runtime({
       store,
       eventSink: createMockEventSink(store),
-      sessionCoordinator: cloud.sessionCoordinator,
-      livePublisher: cloud.livePublisher,
+      sessionCoordinator: seams.sessionCoordinator,
+      livePublisher: seams.livePublisher,
       provider: createMockProvider(),
       toolRegistry: createToolRegistry(),
     });
@@ -137,12 +137,12 @@ describe("Runtime.rerun", () => {
       },
     ]);
 
-    const cloud = createTestCloudDeps();
+    const seams = createTestSeamDeps();
     const runtime = new Runtime({
       store,
       eventSink: createMockEventSink(store),
-      sessionCoordinator: cloud.sessionCoordinator,
-      livePublisher: cloud.livePublisher,
+      sessionCoordinator: seams.sessionCoordinator,
+      livePublisher: seams.livePublisher,
       provider: {
         async stream() {
           await new Promise((resolve) => setTimeout(resolve, 500));
