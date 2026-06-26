@@ -41,6 +41,13 @@ function formatSubmitError(error: unknown): string {
   return "Send failed — check the server and try again.";
 }
 
+function cancelServerSession(sessionId: string | null): void {
+  if (!sessionId) return;
+  void client.cancel(sessionId).catch(() => {
+    // Session may already be idle or the server may be offline.
+  });
+}
+
 function submitPrompt(
   prompt: string,
   state: UIState,
@@ -86,6 +93,7 @@ function handleInputSubmit(
     if (slash) {
       if (slash.actions.some((action) => action.type === "NEW_SESSION")) {
         options.endSessionStream();
+        cancelServerSession(state.sessionId);
       }
       dispatchSlashResult(dispatch, slash);
     }

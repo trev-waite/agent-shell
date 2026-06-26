@@ -49,7 +49,7 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     name: "new",
     description: "Start a new conversation",
     actions: [{ type: "NEW_SESSION" }],
-    message: "New conversation — next message starts a fresh session",
+    message: "New conversation — cancelled in-flight work; next message starts a fresh session",
   },
   {
     name: "help",
