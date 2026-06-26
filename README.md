@@ -4,9 +4,83 @@ A **local-first execution runtime** for AI agents with a terminal-native UI.
 
 Relay is an event-sourced execution runtime — not a chatbot framework, cloud orchestration platform, or web application. Everything runs locally. The event log is the system of record; the terminal UI is a disposable projection.
 
+## North Star
+
+Relay is a **local-first execution runtime** that owns agent loop state, streams events to observers, and persists an append-only record — designed so every local interface is a future cloud seam.
+
+**What it is:** The thing that owns execution state, drives the agent loop, and lets clients observe without depending on them. Not a framework, not a platform, not a chatbot wrapper.
+
+**The core insight:** The agent loop (ReAct), the persistence layer, and client transport are three completely separate concerns. Most agent tools collapse them together; Relay keeps them explicitly separated from day one.
+
+**The design rule:**
+
+> The runtime runs. Clients watch. Storage records. None of them need each other to function.
+
+**Invariants** (enforced in code and tested):
+
+| Invariant | Meaning |
+|-----------|---------|
+| UI refresh never interrupts execution | Runtime server is a separate process; the terminal is a disposable subscriber |
+| Storage never blocks token streaming | Events fan out to observers first; persistence runs asynchronously via `EventSink` |
+| Client disconnect never cancels the agent | SSE `close` unsubscribes the observer only — execution continues |
+
+**Future direction (design for, don't build yet):** `ExecutionLoop`, `ExecutionStore`, `EventStore`, `EventSink`, `LiveEventPublisher`, `DurableExecutor`, and `SessionCoordinator` are the seams where durable execution, cross-device resume, multi-client observability, and worker isolation attach later — without a rewrite.
+
+### Cloud-ready layers
+
+The same separation that works locally maps directly to cloud deployment roles:
+
+```mermaid
+flowchart TB
+  subgraph clients [Clients - any device]
+    T[Terminal / Web / CI]
+  end
+
+  subgraph transport [Transport - stateless API]
+    SDK["@relay/sdk"]
+    HTTP[Fastify / apps/server]
+  end
+
+  subgraph execution [Execution - stateful worker]
+    RT["@relay/runtime"]
+    LOOP[ReActLoop]
+    EXEC[DurableExecutor]
+    COORD[SessionCoordinator]
+    TOOLS["@relay/tools"]
+    PROV["@relay/providers"]
+  end
+
+  subgraph persistence [Persistence - shared store]
+    LIVE[LiveEventPublisher]
+    ES[EventSink]
+    STORE[ExecutionStore]
+    DB[(SQLite today / remote later)]
+  end
+
+  T --> SDK --> HTTP --> EXEC
+  EXEC --> RT --> LOOP
+  RT --> COORD
+  RT --> LIVE
+  RT --> ES --> STORE --> DB
+  RT --> TOOLS
+  RT --> PROV
+  LIVE -.-> SDK
+```
+
+| Layer | Package | Local today | Cloud later |
+|-------|---------|-------------|-------------|
+| Observer | `@relay/sdk` | Terminal | Web, mobile, CI |
+| Transport | `apps/server` | Fastify on localhost | API gateway + SSE |
+| Dispatch | `DurableExecutor` | In-process stub | Queue / Temporal |
+| Coordination | `SessionCoordinator` | In-memory stub | Redis / etcd leases |
+| Live fanout | `LiveEventPublisher` | In-process stub | Redis / NATS pub/sub |
+| Execution | `@relay/runtime` | ReAct loop | Same loop on worker VM |
+| Durability | `EventSink` | Async SQLite | Remote append-only log |
+
 ## Contents
 
 - [Quick Start](#quick-start)
+- [North Star](#north-star)
 - [Architecture](#architecture)
 - [Relay SDK](#relay-sdk-relaysdk)
 - [Event Sourcing](#event-sourcing)
@@ -296,6 +370,8 @@ SQLite (via `bun:sqlite` + Drizzle ORM) is the **execution store**, not an analy
 | `snapshots` | Checkpoint payloads |
 
 Messages are never written directly by the loop or tools — only projected by the runtime after `message.completed`.
+
+**Async persistence:** The runtime fans out events to live observers before writing to storage. `createProjectorEventSink()` wraps the SQLite projector as an `EventSink` — `write()` returns immediately; events persist serially on a background chain. The loop calls `flush()` when a session finishes so durability is guaranteed before the session goes idle.
 
 ## Runtime API
 

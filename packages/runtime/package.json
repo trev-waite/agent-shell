@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@relay/providers": "workspace:*",
-    "@relay/storage": "workspace:*",
     "@relay/tool-registry": "workspace:*",
     "@relay/types": "workspace:*",
     "ulid": "^3.0.2"

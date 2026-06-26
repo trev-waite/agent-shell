@@ -4,7 +4,9 @@ import type {
   RelayEvent,
   ExecutionStore,
   EventHandler,
-  EventProjector,
+  EventSink,
+  LiveEventPublisher,
+  SessionCoordinator,
 } from "@relay/types";
 import type { LLMProvider } from "@relay/providers";
 import type { ToolRegistry } from "@relay/tool-registry";
@@ -18,11 +20,17 @@ import {
   type CheckpointSummary,
 } from "./checkpoint.js";
 
+const SESSION_LEASE_TTL_MS = 300_000;
+export const DEFAULT_WORKER_ID = "local-worker";
+
 export interface RuntimeOptions {
   store: ExecutionStore;
-  projector: EventProjector;
+  eventSink: EventSink;
+  sessionCoordinator: SessionCoordinator;
+  livePublisher: LiveEventPublisher;
   provider: LLMProvider;
   toolRegistry: ToolRegistry;
+  workerId?: string;
 }
 
 export interface ExecuteOptions {
@@ -63,24 +71,28 @@ interface ActiveSession {
 
 export class Runtime {
   private readonly store: ExecutionStore;
-  private readonly projector: EventProjector;
+  private readonly eventSink: EventSink;
+  private readonly sessionCoordinator: SessionCoordinator;
+  private readonly livePublisher: LiveEventPublisher;
   private readonly provider: LLMProvider;
   private readonly toolRegistry: ToolRegistry;
+  private readonly workerId: string;
   private readonly activeSessions = new Map<string, ActiveSession>();
-  private readonly globalEmitter = new EventEmitter();
 
   constructor(opts: RuntimeOptions) {
     this.store = opts.store;
-    this.projector = opts.projector;
+    this.eventSink = opts.eventSink;
+    this.sessionCoordinator = opts.sessionCoordinator;
+    this.livePublisher = opts.livePublisher;
     this.provider = opts.provider;
     this.toolRegistry = opts.toolRegistry;
-    this.globalEmitter.setMaxListeners(100);
+    this.workerId = opts.workerId ?? DEFAULT_WORKER_ID;
   }
 
   async execute(opts: ExecuteOptions): Promise<string> {
     const session = this.store.createSession(sanitize(opts.prompt));
 
-    this.runActiveLoop(session.id, (emit, signal) =>
+    await this.startActiveLoop(session.id, (emit, signal) =>
       new ReActLoop({
         sessionId: session.id,
         prompt: opts.prompt,
@@ -96,10 +108,6 @@ export class Runtime {
   }
 
   async rerun(opts: RerunOptions): Promise<string> {
-    if (this.activeSessions.has(opts.sessionId)) {
-      throw new Error("Session is already running");
-    }
-
     const session = this.store.getSession(opts.sessionId);
     if (!session) {
       throw new Error("Session not found");
@@ -109,7 +117,7 @@ export class Runtime {
     const checkpointEvent = findCheckpointEvent(events, opts.checkpointId);
     const { iteration, messages } = parseCheckpointData(checkpointEvent.payload.data);
 
-    this.runActiveLoop(opts.sessionId, (emit, signal) =>
+    await this.startActiveLoop(opts.sessionId, (emit, signal) =>
       new ReActLoop({
         sessionId: opts.sessionId,
         prompt: session.prompt,
@@ -126,10 +134,6 @@ export class Runtime {
   }
 
   async continue(opts: ContinueOptions): Promise<string> {
-    if (this.activeSessions.has(opts.sessionId)) {
-      throw new Error("Session is already running");
-    }
-
     const session = this.store.getSession(opts.sessionId);
     if (!session) {
       throw new Error("Session not found");
@@ -139,7 +143,7 @@ export class Runtime {
     const checkpointEvent = findCheckpointEvent(events);
     const { messages } = parseCheckpointData(checkpointEvent.payload.data);
 
-    this.runActiveLoop(opts.sessionId, (emit, signal) =>
+    await this.startActiveLoop(opts.sessionId, (emit, signal) =>
       new ReActLoop({
         sessionId: opts.sessionId,
         prompt: opts.prompt,
@@ -191,9 +195,8 @@ export class Runtime {
           recoverable: false,
         },
       };
-      this.persistEvent(event);
-      active.emitter.emit("event", event);
-      this.globalEmitter.emit(`session:${opts.sessionId}`, event);
+      this.fanoutEvent(opts.sessionId, event, active.emitter);
+      void this.eventSink.write(event);
     }
   }
 
@@ -203,16 +206,14 @@ export class Runtime {
       return active.emitter;
     }
     const emitter = new EventEmitter();
-    this.globalEmitter.on(`session:${opts.sessionId}`, (event: RelayEvent) => {
+    this.livePublisher.subscribe(opts.sessionId, (event) => {
       emitter.emit("event", event);
     });
     return emitter;
   }
 
   onSessionEvent(sessionId: string, handler: EventHandler): () => void {
-    const listener = (event: RelayEvent) => handler(event);
-    this.globalEmitter.on(`session:${sessionId}`, listener);
-    return () => this.globalEmitter.off(`session:${sessionId}`, listener);
+    return this.livePublisher.subscribe(sessionId, handler);
   }
 
   isSessionActive(sessionId: string): boolean {
@@ -224,27 +225,42 @@ export class Runtime {
     return deriveSessionStatus(events);
   }
 
-  private persistEvent(event: RelayEvent): void {
-    this.projector.persist(event);
+  private fanoutEvent(
+    sessionId: string,
+    event: RelayEvent,
+    emitter?: EventEmitter,
+  ): void {
+    emitter?.emit("event", event);
+    this.livePublisher.publish(sessionId, event);
   }
 
-  private runActiveLoop(
+  private async startActiveLoop(
     sessionId: string,
     buildLoop: (emit: EventHandler, signal: AbortSignal) => ReActLoop,
-  ): void {
+  ): Promise<void> {
+    const acquired = await this.sessionCoordinator.acquireLease(
+      sessionId,
+      this.workerId,
+      SESSION_LEASE_TTL_MS,
+    );
+    if (!acquired) {
+      throw new Error("Session is already running");
+    }
+
     const emitter = new EventEmitter();
     const abortController = new AbortController();
 
     const emit: EventHandler = (event) => {
-      this.persistEvent(event);
-      emitter.emit("event", event);
-      this.globalEmitter.emit(`session:${sessionId}`, event);
+      this.fanoutEvent(sessionId, event, emitter);
+      void this.eventSink.write(event);
     };
 
     const loop = buildLoop(emit, abortController.signal);
     this.activeSessions.set(sessionId, { loop, emitter, abortController });
 
-    loop.run().finally(() => {
+    void loop.run().finally(async () => {
+      await this.eventSink.flush();
+      await this.sessionCoordinator.releaseLease(sessionId, this.workerId);
       this.activeSessions.delete(sessionId);
     });
   }
