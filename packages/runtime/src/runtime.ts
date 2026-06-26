@@ -35,6 +35,12 @@ export interface ReplayOptions {
   afterEventId?: string;
 }
 
+export interface ContinueOptions {
+  sessionId: string;
+  prompt: string;
+  model?: string;
+}
+
 export interface RerunOptions {
   sessionId: string;
   checkpointId?: string;
@@ -73,30 +79,18 @@ export class Runtime {
 
   async execute(opts: ExecuteOptions): Promise<string> {
     const session = this.store.createSession(sanitize(opts.prompt));
-    const emitter = new EventEmitter();
-    const abortController = new AbortController();
 
-    const emit: EventHandler = (event) => {
-      this.persistEvent(event);
-      emitter.emit("event", event);
-      this.globalEmitter.emit(`session:${session.id}`, event);
-    };
-
-    const loop = new ReActLoop({
-      sessionId: session.id,
-      prompt: opts.prompt,
-      provider: this.provider,
-      toolRegistry: this.toolRegistry,
-      emit,
-      signal: abortController.signal,
-      ...(opts.model !== undefined ? { model: opts.model } : {}),
-    });
-
-    this.activeSessions.set(session.id, { loop, emitter, abortController });
-
-    loop.run().finally(() => {
-      this.activeSessions.delete(session.id);
-    });
+    this.runActiveLoop(session.id, (emit, signal) =>
+      new ReActLoop({
+        sessionId: session.id,
+        prompt: opts.prompt,
+        provider: this.provider,
+        toolRegistry: this.toolRegistry,
+        emit,
+        signal,
+        ...(opts.model !== undefined ? { model: opts.model } : {}),
+      }),
+    );
 
     return session.id;
   }
@@ -115,31 +109,52 @@ export class Runtime {
     const checkpointEvent = findCheckpointEvent(events, opts.checkpointId);
     const { iteration, messages } = parseCheckpointData(checkpointEvent.payload.data);
 
-    const emitter = new EventEmitter();
-    const abortController = new AbortController();
+    this.runActiveLoop(opts.sessionId, (emit, signal) =>
+      new ReActLoop({
+        sessionId: opts.sessionId,
+        prompt: session.prompt,
+        provider: this.provider,
+        toolRegistry: this.toolRegistry,
+        emit,
+        signal,
+        resume: { messages, iteration },
+        ...(opts.model !== undefined ? { model: opts.model } : {}),
+      }),
+    );
 
-    const emit: EventHandler = (event) => {
-      this.persistEvent(event);
-      emitter.emit("event", event);
-      this.globalEmitter.emit(`session:${opts.sessionId}`, event);
-    };
+    return opts.sessionId;
+  }
 
-    const loop = new ReActLoop({
-      sessionId: opts.sessionId,
-      prompt: session.prompt,
-      provider: this.provider,
-      toolRegistry: this.toolRegistry,
-      emit,
-      signal: abortController.signal,
-      resume: { messages, iteration },
-      ...(opts.model !== undefined ? { model: opts.model } : {}),
-    });
+  async continue(opts: ContinueOptions): Promise<string> {
+    if (this.activeSessions.has(opts.sessionId)) {
+      throw new Error("Session is already running");
+    }
 
-    this.activeSessions.set(opts.sessionId, { loop, emitter, abortController });
+    const session = this.store.getSession(opts.sessionId);
+    if (!session) {
+      throw new Error("Session not found");
+    }
 
-    loop.run().finally(() => {
-      this.activeSessions.delete(opts.sessionId);
-    });
+    const events = this.store.events.getBySession(opts.sessionId);
+    const checkpointEvent = findCheckpointEvent(events);
+    const { messages } = parseCheckpointData(checkpointEvent.payload.data);
+
+    this.runActiveLoop(opts.sessionId, (emit, signal) =>
+      new ReActLoop({
+        sessionId: opts.sessionId,
+        prompt: opts.prompt,
+        provider: this.provider,
+        toolRegistry: this.toolRegistry,
+        emit,
+        signal,
+        resume: {
+          messages,
+          iteration: 0,
+          appendUserPrompt: opts.prompt,
+        },
+        ...(opts.model !== undefined ? { model: opts.model } : {}),
+      }),
+    );
 
     return opts.sessionId;
   }
@@ -211,6 +226,27 @@ export class Runtime {
 
   private persistEvent(event: RelayEvent): void {
     this.projector.persist(event);
+  }
+
+  private runActiveLoop(
+    sessionId: string,
+    buildLoop: (emit: EventHandler, signal: AbortSignal) => ReActLoop,
+  ): void {
+    const emitter = new EventEmitter();
+    const abortController = new AbortController();
+
+    const emit: EventHandler = (event) => {
+      this.persistEvent(event);
+      emitter.emit("event", event);
+      this.globalEmitter.emit(`session:${sessionId}`, event);
+    };
+
+    const loop = buildLoop(emit, abortController.signal);
+    this.activeSessions.set(sessionId, { loop, emitter, abortController });
+
+    loop.run().finally(() => {
+      this.activeSessions.delete(sessionId);
+    });
   }
 }
 

@@ -44,6 +44,12 @@ export interface Metrics {
 
 export type OverlayPanel = "none" | "slash" | "trace" | "metrics" | "model";
 
+export interface QueuedMessage {
+  id: string;
+  prompt: string;
+  enqueuedAt: number;
+}
+
 export interface UIState {
   messages: ChatMessage[];
   traces: ToolTrace[];
@@ -58,6 +64,7 @@ export interface UIState {
   streamConnected: boolean;
   activity: ActivityStatus | null;
   seenEventIds: Set<string>;
+  lastEventId: string | null;
   sessionStartedAt: number | null;
   sessionEndedAt: number | null;
   expandedTraceIds: string[];
@@ -66,6 +73,7 @@ export interface UIState {
   slashMenuIndex: number;
   colorSchemePreference: ColorSchemePreference;
   commandNotice: string | null;
+  messageQueue: QueuedMessage[];
 }
 
 export type UIAction =
@@ -90,7 +98,11 @@ export type UIAction =
   | { type: "CYCLE_COLOR_SCHEME" }
   | { type: "SET_COLOR_SCHEME"; preference: ColorSchemePreference }
   | { type: "SET_COMMAND_NOTICE"; message: string | null }
+  | { type: "ENQUEUE_MESSAGE"; prompt: string }
+  | { type: "REMOVE_QUEUE_HEAD" }
+  | { type: "RESTORE_QUEUE_HEAD"; item: QueuedMessage }
   | { type: "EVENT"; event: RelayEvent }
+  | { type: "NEW_SESSION" }
   | { type: "RESET" };
 
 export const initialState: UIState = {
@@ -113,6 +125,7 @@ export const initialState: UIState = {
   streamConnected: false,
   activity: null,
   seenEventIds: new Set(),
+  lastEventId: null,
   sessionStartedAt: null,
   sessionEndedAt: null,
   expandedTraceIds: [],
@@ -121,6 +134,7 @@ export const initialState: UIState = {
   slashMenuIndex: 0,
   colorSchemePreference: "auto",
   commandNotice: null,
+  messageQueue: [],
 };
 
 function hasStreamingAssistant(messages: ChatMessage[]): boolean {
@@ -148,6 +162,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
           ...state,
           sessionId: action.sessionId,
           seenEventIds: new Set(),
+          lastEventId: null,
         };
       }
 
@@ -156,6 +171,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...preservePreferences(state),
         sessionId: action.sessionId,
         seenEventIds: new Set(),
+        lastEventId: null,
       };
     }
     case "SET_INPUT": {
@@ -320,6 +336,30 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
       return { ...state, colorSchemePreference: action.preference };
     case "SET_COMMAND_NOTICE":
       return { ...state, commandNotice: action.message };
+    case "ENQUEUE_MESSAGE": {
+      const id = `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      return {
+        ...state,
+        messageQueue: [
+          ...state.messageQueue,
+          { id, prompt: action.prompt, enqueuedAt: Date.now() },
+        ],
+        commandNotice: null,
+      };
+    }
+    case "REMOVE_QUEUE_HEAD":
+      return { ...state, messageQueue: state.messageQueue.slice(1) };
+    case "RESTORE_QUEUE_HEAD":
+      return {
+        ...state,
+        messageQueue: [action.item, ...state.messageQueue],
+      };
+    case "NEW_SESSION":
+      return {
+        ...initialState,
+        ...preservePreferences(state),
+        streamConnected: false,
+      };
     case "RESET":
       return { ...initialState };
     case "EVENT": {
@@ -329,7 +369,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
       }
       const seenEventIds = new Set(state.seenEventIds);
       seenEventIds.add(event.id);
-      const base: UIState = { ...state, seenEventIds };
+      const base: UIState = { ...state, seenEventIds, lastEventId: event.id };
 
       switch (event.type) {
         case "message.started": {

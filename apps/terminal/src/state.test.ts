@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RelayEvent } from "@relay/types";
 import { uiReducer, initialState } from "./state.js";
+import { isSessionBusy } from "./stateHelpers.js";
 import { buildTraceTimeline, tracesForTurn } from "./projections/trace.js";
 import { buildMetricsGrid } from "./projections/metrics.js";
 import { deriveFooterStatus } from "./projections/footer.js";
@@ -163,6 +164,92 @@ describe("uiReducer UI actions", () => {
     expect(next.sessionId).toBe("session-a");
     expect(next.messages).toHaveLength(0);
     expect(next.seenEventIds.size).toBe(0);
+  });
+
+  test("SET_SESSION with same session id preserves conversation", () => {
+    const withMessages = {
+      ...initialState,
+      sessionId: "session-a",
+      lastEventId: "evt-9",
+      messages: [
+        {
+          id: "m1",
+          role: "user" as const,
+          content: "hi",
+          timestamp: 1,
+        },
+      ],
+    };
+
+    const next = uiReducer(withMessages, { type: "SET_SESSION", sessionId: "session-a" });
+    expect(next).toBe(withMessages);
+  });
+
+  test("NEW_SESSION clears conversation but keeps preferences", () => {
+    const active = {
+      ...initialState,
+      sessionId: "session-a",
+      messages: [
+        {
+          id: "m1",
+          role: "user" as const,
+          content: "hi",
+          timestamp: 1,
+        },
+      ],
+      selectedModel: "gemini-3.1-flash-lite" as const,
+      colorSchemePreference: "dark" as const,
+      streamConnected: true,
+      messageQueue: [{ id: "q-1", prompt: "queued", enqueuedAt: 1 }],
+    };
+
+    const next = uiReducer(active, { type: "NEW_SESSION" });
+    expect(next.sessionId).toBeNull();
+    expect(next.messages).toHaveLength(0);
+    expect(next.selectedModel).toBe(active.selectedModel);
+    expect(next.colorSchemePreference).toBe("dark");
+    expect(next.streamConnected).toBe(false);
+    expect(next.messageQueue).toHaveLength(0);
+  });
+
+  test("ENQUEUE_MESSAGE appends to the queue", () => {
+    const first = uiReducer(initialState, { type: "ENQUEUE_MESSAGE", prompt: "follow up" });
+    expect(first.messageQueue).toHaveLength(1);
+    expect(first.messageQueue[0]?.prompt).toBe("follow up");
+
+    const second = uiReducer(first, { type: "ENQUEUE_MESSAGE", prompt: "and another" });
+    expect(second.messageQueue).toHaveLength(2);
+    expect(second.messageQueue[1]?.prompt).toBe("and another");
+  });
+
+  test("REMOVE_QUEUE_HEAD and RESTORE_QUEUE_HEAD manage the queue", () => {
+    const queued = uiReducer(initialState, { type: "ENQUEUE_MESSAGE", prompt: "one" });
+    const withTwo = uiReducer(queued, { type: "ENQUEUE_MESSAGE", prompt: "two" });
+    const head = withTwo.messageQueue[0]!;
+
+    const removed = uiReducer(withTwo, { type: "REMOVE_QUEUE_HEAD" });
+    expect(removed.messageQueue).toHaveLength(1);
+    expect(removed.messageQueue[0]?.prompt).toBe("two");
+
+    const restored = uiReducer(removed, { type: "RESTORE_QUEUE_HEAD", item: head });
+    expect(restored.messageQueue).toHaveLength(2);
+    expect(restored.messageQueue[0]?.prompt).toBe("one");
+  });
+
+  test("isSessionBusy is true while activity or running status is set", () => {
+    expect(isSessionBusy(initialState)).toBe(false);
+    expect(
+      isSessionBusy({
+        ...initialState,
+        activity: { label: "Thinking…", phase: "thinking" },
+      }),
+    ).toBe(true);
+    expect(
+      isSessionBusy({
+        ...initialState,
+        metrics: { ...initialState.metrics, sessionStatus: "running" },
+      }),
+    ).toBe(true);
   });
 });
 
