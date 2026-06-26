@@ -5,7 +5,7 @@ export interface LocalSessionCoordinatorOptions {
   onCancel?: (sessionId: string) => void;
 }
 
-/** In-memory session ownership — swap for Redis/etcd in multi-worker deployments. */
+/** Local adapter — in-memory leases. Remote: `packages/coordination` (Redis/etcd). */
 export function createLocalSessionCoordinator(
   opts: LocalSessionCoordinatorOptions = {},
 ): SessionCoordinator {

@@ -7,7 +7,7 @@ import {
   createLocalLiveEventPublisher,
   createLocalSessionCoordinator,
 } from "./index.js";
-import { Runtime } from "../runtime.js";
+import { Runtime } from "../../runtime.js";
 
 function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
   const log: RelayEvent[] = [...initial];
@@ -91,7 +91,7 @@ function createTestRuntime(store: ExecutionStore) {
   return runtime;
 }
 
-describe("local cloud stubs", () => {
+describe("local seam adapters", () => {
   test("SessionCoordinator rejects a second worker for the same session", async () => {
     const coordinator = createLocalSessionCoordinator();
     expect(await coordinator.acquireLease("sess-1", "worker-a", 60_000)).toBe(true);

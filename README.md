@@ -2,11 +2,11 @@
 
 A **local-first execution runtime** for AI agents with a terminal-native UI — event-sourced, not a chatbot wrapper. The event log is the system of record; the terminal is a disposable projection.
 
-See [North Star](#north-star) for design intent, invariants, and the [cloud-ready layer diagram](#cloud-ready-layers).
+See [North Star](#north-star) for design intent, invariants, and the [platform seams diagram](#platform-seams).
 
 ## North Star
 
-Relay owns agent loop state, streams events to observers, and persists an append-only record — with every local interface designed as a future cloud seam.
+Relay owns agent loop state, streams events to observers, and persists an append-only record — with every boundary defined as a **swappable seam** (local adapters today, remote adapters later).
 
 **What it is:** The thing that owns execution state, drives the agent loop, and lets clients observe without depending on them.
 
@@ -24,11 +24,26 @@ Relay owns agent loop state, streams events to observers, and persists an append
 | Storage never blocks token streaming | Events fan out to observers first; persistence runs asynchronously via `EventSink` |
 | Client disconnect never cancels the agent | SSE `close` unsubscribes the observer only — execution continues |
 
-**Future direction (design for, don't build yet):** `ExecutionLoop`, `ExecutionStore`, `EventStore`, `EventSink`, `LiveEventPublisher`, `DurableExecutor`, and `SessionCoordinator` — swap implementations at these seams for durable execution, cross-device resume, and worker isolation without rewriting the loop.
+**Seams** — see [What is a seam?](#what-is-a-seam) below. Interfaces live in `@relay/types/seams` and `@relay/types/storage`; local adapters in `@relay/runtime/seams/local` and `@relay/storage`.
 
-### Cloud-ready layers
+### What is a seam?
 
-Local today = **one Bun process** (`apps/server`). `DurableExecutor`, `SessionCoordinator`, and `LiveEventPublisher` are wired as **in-process stubs** — same node, swappable interfaces. Cloud deployment splits them across gateway, workers, and shared stores.
+A **seam** is a boundary where one part of the system ends and another begins — defined by an **interface**, not a concrete implementation. The runtime depends on `EventSink.write()`, not on SQLite. The server depends on `DurableExecutor.execute()`, not on whether the loop runs in-process or on a remote worker.
+
+That lets you **swap adapters** without rewriting the ReAct loop:
+
+| Seam | Interface | Local adapter (today) |
+|------|-----------|----------------------|
+| Durability | `EventSink` | `createProjectorEventSink()` → SQLite |
+| Dispatch | `DurableExecutor` | `createLocalDurableExecutor()` → in-process |
+| Session ownership | `SessionCoordinator` | `createLocalSessionCoordinator()` → in-memory |
+| Live observers | `LiveEventPublisher` | `createLocalLiveEventPublisher()` → EventEmitter |
+
+Other swappable boundaries (`ExecutionStore`, `ExecutionLoop`, …) follow the same pattern — interface in `@relay/types`, adapter in `@relay/storage` or `@relay/runtime`.
+
+### Platform seams
+
+Local today = **one Bun process** (`apps/server`). Seam **interfaces** are shared; **local adapters** (`createLocal*`) are wired in-process. Distributed deployment swaps adapters — gateway, workers, Redis, remote store — not the loop.
 
 ```mermaid
 flowchart TB
@@ -67,20 +82,20 @@ flowchart TB
   LIVE -.-> SDK
 ```
 
-| Layer | Package / seam | Local today | Cloud later |
-|-------|----------------|-------------|-------------|
+| Layer | Interface | Local adapter (today) | Remote adapter (future) |
+|-------|-----------|----------------------|-------------------------|
 | Observer | `@relay/sdk` | Terminal | Web, mobile, CI |
-| Transport | `apps/server` | Fastify on localhost | API gateway + SSE |
-| Dispatch | `DurableExecutor` | In-process stub | Queue / Temporal worker |
-| Coordination | `SessionCoordinator` | In-memory lease stub | Redis / etcd |
-| Live fanout | `LiveEventPublisher` | In-process EventEmitter | Redis / NATS pub/sub |
-| Execution | `@relay/runtime` | ReAct loop | Same loop on worker VM |
-| Durability | `EventSink` | Async SQLite | Remote append-only log |
+| Transport | `apps/server` | Fastify on localhost | `apps/gateway` |
+| Dispatch | `DurableExecutor` | `createLocalDurableExecutor` | `createQueueDurableExecutor` |
+| Coordination | `SessionCoordinator` | `createLocalSessionCoordinator` | `createRedisSessionCoordinator` |
+| Live fanout | `LiveEventPublisher` | `createLocalLiveEventPublisher` | `createRedisLiveEventPublisher` |
+| Execution | `@relay/runtime` | ReAct loop in-process | Same loop on worker pod |
+| Durability | `EventSink` | `createProjectorEventSink` (SQLite) | Remote append-only log |
 
 ## Contents
 
 - [Quick Start](#quick-start)
-- [North Star](#north-star) — design intent, invariants, cloud layer diagram
+- [North Star](#north-star) — design intent, invariants, platform seams diagram
 - [Architecture](#architecture)
 - [Relay SDK](#relay-sdk-relaysdk)
 - [Event Sourcing](#event-sourcing)
@@ -186,7 +201,7 @@ The runtime restores the latest checkpoint, appends the new user message, and ru
 
 ## Architecture
 
-**Two processes** for daily use — runtime server + disposable terminal. **One process** inside the server today: Fastify, `DurableExecutor`, `SessionCoordinator`, `LiveEventPublisher`, and `@relay/runtime` all run in the same Bun process. See [Cloud-ready layers](#cloud-ready-layers) for how that maps to a distributed deployment.
+**Two processes** for daily use — runtime server + disposable terminal. **One process** inside the server today: Fastify, local seam adapters, and `@relay/runtime` all run together. See [Platform seams](#platform-seams) for the distributed target.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -199,9 +214,9 @@ The runtime restores the latest checkpoint, appends the new user message, and ru
 │                                                              │
 │  Fastify ──► DurableExecutor ──► @relay/runtime (ReActLoop) │
 │                  │                    │                      │
-│                  │         SessionCoordinator (lease stub)   │
-│                  │         LiveEventPublisher (fanout stub)  │
-│                  │         EventSink ──► SQLite              │
+│                  │         SessionCoordinator (local adapter)  │
+│                  │         LiveEventPublisher (local adapter)  │
+│                  │         EventSink (local adapter) ──► SQLite │
 │                  └── providers (Gemini) · tools (local FS)  │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -367,7 +382,7 @@ SQLite (via `bun:sqlite` + Drizzle ORM) is the **execution store**, not an analy
 
 Messages are never written directly by the loop or tools — only projected by the runtime after `message.completed`.
 
-**Async persistence:** The runtime fans out events to live observers before writing to storage. `createProjectorEventSink()` wraps the SQLite projector as an `EventSink` — `write()` returns immediately; events persist serially on a background chain. The loop calls `flush()` when a session finishes so durability is guaranteed before the session goes idle.
+**Async persistence (`EventSink` seam):** The runtime fans out events to live observers before writing to storage. `createProjectorEventSink()` in `@relay/storage` is the local adapter — `write()` returns immediately; events persist serially on a background chain. The loop calls `flush()` when a session finishes so durability is guaranteed before the session goes idle.
 
 ## Runtime API
 
@@ -402,7 +417,7 @@ runtime.onSessionEvent(sessionId, handler);            // Live SSE fanout
 runtime.listCheckpoints(sessionId);
 ```
 
-Local stub factories live in `@relay/runtime/cloud`: `createLocalDurableExecutor`, `createLocalSessionCoordinator`, `createLocalLiveEventPublisher`.
+Local adapters live in `@relay/runtime/seams/local`: `createLocalDurableExecutor`, `createLocalSessionCoordinator`, `createLocalLiveEventPublisher`. Interfaces live in `@relay/types/seams`.
 
 ## Monorepo
 
@@ -412,13 +427,13 @@ apps/
   server/        ← Fastify runtime server
 
 packages/
-  runtime/       ← execution engine + local cloud stubs (no HTTP)
+  runtime/       ← execution engine + seams/local adapters (no HTTP)
   providers/     ← Gemini LLM adapter
-  storage/       ← bun:sqlite event store + EventSink adapter
+  storage/       ← bun:sqlite store + local EventSink adapter
   tools/         ← file.read, shell.exec implementations
   tool-registry/ ← tool abstraction layer
   sdk/           ← runtime client (SSE transport)
-  types/         ← shared events, storage, and cloud seam interfaces
+  types/         ← events, storage, and seam interfaces (`seams.ts`)
 ```
 
 Internal packages use the workspace protocol: `"@relay/sdk": "workspace:*"`

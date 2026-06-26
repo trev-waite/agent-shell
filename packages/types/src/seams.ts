@@ -1,6 +1,8 @@
 /**
- * Cloud / multi-worker extension points. Local in-process stubs implement these
- * interfaces today; cloud deployments swap in Redis, Temporal, pub/sub, etc.
+ * Platform seams — swappable interfaces between runtime, storage, dispatch, and
+ * observability. Local in-process adapters implement these today; distributed
+ * deployments (Redis, queues, Temporal, remote stores) replace adapters without
+ * changing @relay/runtime or @relay/sdk.
  */
 import type { EventHandler, RelayEvent, SessionStatus } from "./events.js";
 
@@ -44,7 +46,7 @@ export interface SessionCoordinator {
   renewLease(sessionId: string, workerId: string, ttlMs: number): Promise<boolean>;
   releaseLease(sessionId: string, workerId: string): Promise<void>;
   resolveOwner(sessionId: string): Promise<string | null>;
-  /** Route cancel to the worker that owns the session (local stub invokes onCancel). */
+  /** Route cancel to the worker that owns the session (local adapter invokes onCancel). */
   routeCancel(sessionId: string): Promise<void>;
   getActiveSessions(): Promise<string[]>;
 }
