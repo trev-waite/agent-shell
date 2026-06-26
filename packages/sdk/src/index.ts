@@ -58,6 +58,7 @@ export interface RelayClient {
   listModels(): Promise<ModelsResponse>;
   listCheckpoints(sessionId: string): Promise<{ checkpoints: CheckpointInfo[] }>;
   rerun(opts: RerunOptions): Promise<{ sessionId: string }>;
+  cancel(sessionId: string): Promise<void>;
   subscribe(opts: SubscribeOptions): () => void;
   replay(opts: ReplayOptions): () => void;
 }
@@ -123,6 +124,17 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
       }
 
       return response.json() as Promise<{ sessionId: string }>;
+    },
+
+    async cancel(sessionId: string): Promise<void> {
+      const response = await fetch(`${baseUrl}/sessions/${sessionId}/cancel`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Failed to cancel session: ${response.status} ${text}`);
+      }
     },
 
     subscribe(options: SubscribeOptions): () => void {

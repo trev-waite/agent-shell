@@ -67,9 +67,11 @@ Type a prompt and press Enter. Follow-up messages continue the same conversation
 
 The terminal keeps one **session** alive across prompts. The first message calls `POST /sessions`; follow-ups call `POST /sessions/:id/messages`, which loads the latest checkpoint and appends your new user message to the ReAct loop history.
 
-Use **`/new`** to clear the UI and start a fresh session on the next send. Model and theme preferences are preserved.
+Use **`/new`** to clear the UI, cancel any in-flight work on the current session, and start a fresh session on the next send. Model and theme preferences are preserved.
 
 While the agent is thinking, streaming, or running tools, additional prompts are **queued** (highlighted above the input) and sent automatically when the current turn finishes.
+
+**Token cost grows with history** — Each follow-up reloads the latest checkpoint and sends the full conversation (system prompt, tools, and all prior user/assistant/tool messages) to the model. Input tokens and cost per turn increase as the thread gets longer; header metrics show cumulative session spend. Use `/new` when you no longer need prior context.
 
 ### Replay a previous session
 
@@ -181,6 +183,7 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 | `listModels()` | `GET /models` | Provider registry + model lists (Gemini today) |
 | `listCheckpoints(sessionId)` | `GET /sessions/:id/checkpoints` | Checkpoint ids, labels, and iteration numbers |
 | `rerun({ sessionId, checkpointId?, model? })` | `POST /sessions/:id/rerun` | Resume execution from a checkpoint; returns `{ sessionId }` |
+| `cancel(sessionId)` | `POST /sessions/:id/cancel` | Abort in-flight execution (no-op if idle) |
 | `subscribe({ sessionId, onEvent, … })` | `GET /sessions/:id/events` | Live SSE stream — tokens, tools, costs, errors |
 | `replay({ sessionId, onEvent, … })` | `GET /sessions/:id/replay` | Read-only replay of persisted events, then closes |
 
@@ -197,7 +200,7 @@ Every `onEvent` callback receives a typed `RelayEvent` from `@relay/types` — t
 3. **Message queue** — prompts sent while the agent is busy are queued above the input and auto-sent when the turn completes.
 4. **Session replay** — `bun run apps/terminal/src/index.tsx --session <id>` calls `client.replay()` to rebuild history from the event log, then `subscribe()` to pick up anything still running.
 5. **Checkpoint resume** — `client.rerun({ sessionId })` restores the ReAct loop from the latest `checkpoint.saved` snapshot and continues execution on the same session (after failure/cancel, not for normal chat).
-6. **New conversation** — `/new` clears the UI and drops the session id; the next send starts fresh.
+6. **New conversation** — `/new` cancels in-flight work, clears the UI, and drops the session id; the next send starts fresh.
 7. **Disposable UI** — closing the terminal calls the unsubscribe function; the runtime server and SQLite log keep running untouched.
 
 The terminal does **not** load `GEMINI_API_KEY` or any server secrets — only `RELAY_URL` (optional) to find the runtime. All LLM and tool execution stays in Process 1.
@@ -389,7 +392,7 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 | Stream shows **standby** | Normal before your first prompt |
 | Stream shows **disconnected** | Start runtime with `bun run dev:server` first; header status dot turns green when ready |
 | Trace/metrics overlay blocks typing | Overlays stay open while you type; press Esc to dismiss |
-| Queued message not sending | Wait for the current turn to finish (status shows DONE), or use `/new` to reset |
+| Queued message not sending | Wait for the current turn to finish (status shows DONE), or use `/new` to cancel and reset |
 
 ## Performance Philosophy
 
