@@ -47,17 +47,20 @@ bun run dev:terminal
 | `bun run dev:terminal` | Ink chat UI (connects via `@relay/sdk`) |
 | `bun run dev` | Both via Turborepo — terminal input may not work; prefer two terminals |
 
-Type a prompt and press Enter. Press **Tab** or **Ctrl+O** to open the **model menu** — pick a Gemini model from the dropdown (OpenAI and Claude tabs are placeholders for future providers). While the agent works, a status line appears below your message in Chat. Press Esc or Ctrl+C to exit the UI — the runtime server keeps running.
+Type a prompt and press Enter. Use **/** for a command palette (`/model`, `/trace`, `/metrics`, `/help`). Press **Tab** or **⌘O** (Ctrl+O on Linux) to open the model picker. Tool activity appears inline under your message; open **/trace** or **/metrics** for full detail in overlay panels above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
 
 ### Terminal controls
 
 | Key | Action |
 |-----|--------|
-| Enter | Send prompt |
-| Tab / Ctrl+O | Open model menu |
-| ↑↓ | Select model (menu open) |
-| ←→ | Switch provider tab (menu open) |
-| Esc | Close model menu, or exit when menu is closed |
+| Enter | Send prompt (works with trace/metrics overlays open) |
+| `/` | Slash command palette — `/model`, `/trace`, `/metrics`, `/theme`, `/help` |
+| Tab / ⌘O (Ctrl+O) | Open model picker overlay |
+| ↑↓ | Navigate slash palette or model list |
+| ←→ | Switch provider tab (model picker) |
+| `]` / `[` | Expand / collapse focused trace item (trace overlay) |
+| ⌘⇧T / ⌘⇧M | Toggle trace / metrics overlay |
+| Esc | Close top overlay, or exit when none open |
 | Ctrl+C | Exit terminal (server keeps running) |
 
 ### Replay a previous session
@@ -92,7 +95,7 @@ Then attach with the terminal replay command above, or use `client.rerun()` + `c
 │                     Process 2: Terminal                      │
 │  ┌─────────────────────────────────────────────────────┐    │
 │  │  Ink 7 UI (apps/terminal)                           │    │
-│  │  ChatPanel · TracePanel · MetricsPanel · ModelSelector      │    │
+│  │  Conversation log · inline trace · overlay panels   │    │
 │  └──────────────────────┬──────────────────────────────┘    │
 │                         │ @relay/sdk (SSE)                   │
 └─────────────────────────┼───────────────────────────────────┘
@@ -339,8 +342,8 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 | Port already in use | Change `RELAY_PORT` in `.env` and set `RELAY_URL` to match |
 | Can't type in terminal UI | Use `bun run dev:terminal` in its own terminal — Ink needs a direct TTY |
 | Stream shows **standby** | Normal before your first prompt |
-| Stream shows **disconnected** | Start runtime with `bun run dev:server` first; Metrics panel shows **Server: online** when ready |
-| Chat shows only your message during tool use | Restart server after pulling — tool-loop message history + activity indicator fixes require latest code |
+| Stream shows **disconnected** | Start runtime with `bun run dev:server` first; header status dot turns green when ready |
+| Trace/metrics overlay blocks typing | Overlays stay open while you type; press Esc to dismiss |
 
 ## Performance Philosophy
 

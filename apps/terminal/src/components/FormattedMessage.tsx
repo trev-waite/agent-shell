@@ -2,10 +2,13 @@ import { Box, Text } from "ink";
 
 interface FormattedMessageProps {
   content: string;
-  color?: "red" | undefined;
+  color?: string;
 }
 
-type InlinePart = { kind: "text"; value: string } | { kind: "bold"; value: string } | { kind: "code"; value: string };
+type InlinePart =
+  | { kind: "text"; value: string }
+  | { kind: "bold"; value: string }
+  | { kind: "code"; value: string };
 
 const INLINE_PATTERN = /(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__)/g;
 const LIST_LINE = /^(\s*)([-*]|\d+\.)\s+(.*)$/;
@@ -34,16 +37,12 @@ function parseInline(line: string): InlinePart[] {
     parts.push({ kind: "text", value: line.slice(lastIndex) });
   }
 
-  return parts;
+  return parts.length > 0 ? parts : [{ kind: "text", value: line }];
 }
 
-function InlineText({ parts, color }: { parts: InlinePart[]; color?: "red" | undefined }) {
-  if (parts.length === 0) {
-    return null;
-  }
-
+function InlineRow({ parts, color }: { parts: InlinePart[]; color?: string }) {
   return (
-    <>
+    <Box flexDirection="row" flexWrap="wrap">
       {parts.map((part, index) => {
         switch (part.kind) {
           case "bold":
@@ -54,7 +53,7 @@ function InlineText({ parts, color }: { parts: InlinePart[]; color?: "red" | und
             );
           case "code":
             return (
-              <Text key={index} color={color ?? "cyan"}>
+              <Text key={index} dimColor {...(color ? { color } : {})}>
                 {part.value}
               </Text>
             );
@@ -66,11 +65,11 @@ function InlineText({ parts, color }: { parts: InlinePart[]; color?: "red" | und
             );
         }
       })}
-    </>
+    </Box>
   );
 }
 
-function FormattedLine({ line, color }: { line: string; color?: "red" | undefined }) {
+function FormattedLine({ line, color }: { line: string; color?: string }) {
   const list = line.match(LIST_LINE);
   if (list) {
     const indent = list[1] ?? "";
@@ -80,20 +79,14 @@ function FormattedLine({ line, color }: { line: string; color?: "red" | undefine
     const marginLeft = Math.min(indent.length + 1, 4);
 
     return (
-      <Box marginLeft={marginLeft}>
-        <Text wrap="wrap" {...(color ? { color } : {})}>
-          <Text dimColor>{prefix}</Text>
-          <InlineText parts={parseInline(text)} color={color} />
-        </Text>
+      <Box marginLeft={marginLeft} flexDirection="row" flexWrap="wrap">
+        <Text dimColor>{prefix}</Text>
+        <InlineRow parts={parseInline(text)} {...(color ? { color } : {})} />
       </Box>
     );
   }
 
-  return (
-    <Text wrap="wrap" {...(color ? { color } : {})}>
-      <InlineText parts={parseInline(line)} color={color} />
-    </Text>
-  );
+  return <InlineRow parts={parseInline(line)} {...(color ? { color } : {})} />;
 }
 
 export function FormattedMessage({ content, color }: FormattedMessageProps) {
@@ -105,7 +98,7 @@ export function FormattedMessage({ content, color }: FormattedMessageProps) {
         line.length === 0 ? (
           <Box key={index} height={1} />
         ) : (
-          <FormattedLine key={index} line={line} color={color} />
+          <FormattedLine key={index} line={line} {...(color ? { color } : {})} />
         ),
       )}
     </Box>

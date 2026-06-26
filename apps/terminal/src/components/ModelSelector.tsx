@@ -4,96 +4,85 @@ import {
   getEnabledProviders,
   getProviderById,
   modelLabel,
+  type GeminiModelId,
   type ModelProviderId,
 } from "@relay/types";
+import { useTheme } from "../hooks/ThemeContext.js";
+import type { LayoutConfig } from "../theme.js";
+import { OverlayPanel } from "./ui/OverlayPanel.js";
 
-interface ModelSelectorProps {
+interface ModelSelectorMenuProps {
   selectedProviderId: ModelProviderId;
-  selectedModel: string;
-  menuOpen: boolean;
+  selectedModel: GeminiModelId;
   menuProviderIndex: number;
   menuModelIndex: number;
+  layout: LayoutConfig;
 }
 
-export function ModelSelector({
+export function ModelSelectorMenu({
   selectedProviderId,
   selectedModel,
-  menuOpen,
   menuProviderIndex,
   menuModelIndex,
-}: ModelSelectorProps) {
+  layout,
+}: ModelSelectorMenuProps) {
+  const theme = useTheme();
   const enabledProviders = getEnabledProviders();
   const activeProvider =
-    menuOpen && enabledProviders[menuProviderIndex]
-      ? enabledProviders[menuProviderIndex]!
-      : getProviderById(selectedProviderId) ?? enabledProviders[0]!;
-
-  const collapsedLabel = modelLabel(selectedProviderId, selectedModel);
+    enabledProviders[menuProviderIndex] ??
+    getProviderById(selectedProviderId) ??
+    enabledProviders[0]!;
 
   return (
-    <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray">
-      <Box paddingX={1} paddingY={0}>
-        <Text dimColor>Model </Text>
-        {!menuOpen && (
-          <Text>
-            <Text bold color="blue">
-              {getProviderById(selectedProviderId)?.label ?? "Gemini"}
-            </Text>
-            <Text dimColor> ▾ </Text>
-            <Text color="cyan">{collapsedLabel}</Text>
-          </Text>
+    <OverlayPanel title="MODEL" width={layout.columns}>
+      <Box marginBottom={1}>
+        {MODEL_PROVIDERS.map((provider) => {
+          const enabledIndex = enabledProviders.findIndex((p) => p.id === provider.id);
+          const isActiveTab =
+            provider.enabled && enabledIndex === menuProviderIndex;
+
+          return (
+            <Box key={provider.id} marginRight={2}>
+              <Text
+                bold={isActiveTab}
+                {...(isActiveTab ? { color: theme.motion } : {})}
+                dimColor={!provider.enabled}
+              >
+                {provider.enabled ? (isActiveTab ? "▸ " : "  ") : "  "}
+                {provider.label}
+                {!provider.enabled ? " (soon)" : ""}
+              </Text>
+            </Box>
+          );
+        })}
+      </Box>
+
+      <Box flexDirection="column" borderStyle="single" borderColor={theme.border} paddingX={1}>
+        {activeProvider.models.length === 0 ? (
+          <Text dimColor>No models available</Text>
+        ) : (
+          activeProvider.models.map((model, index) => {
+            const isHighlighted = index === menuModelIndex;
+            const isCurrent = model.id === selectedModel;
+
+            return (
+              <Text key={model.id} {...(isHighlighted ? { inverse: true } : {})}>
+                {isHighlighted ? "› " : "  "}
+                <Text color={isHighlighted ? theme.motion : theme.text}>{model.label}</Text>
+                {isCurrent && !isHighlighted && (
+                  <Text color={theme.status}> ✓</Text>
+                )}
+              </Text>
+            );
+          })
         )}
       </Box>
 
-      {menuOpen && (
-        <Box flexDirection="column" paddingX={1} paddingBottom={1}>
-          <Box marginBottom={1}>
-            {MODEL_PROVIDERS.map((provider) => {
-              const enabledIndex = enabledProviders.findIndex((p) => p.id === provider.id);
-              const isActiveTab =
-                provider.enabled && enabledIndex === menuProviderIndex;
-              const isSelectedProvider = provider.id === selectedProviderId && !menuOpen;
-
-              return (
-                <Box key={provider.id} marginRight={2}>
-                  <Text
-                    bold={isActiveTab || isSelectedProvider}
-                    {...(isActiveTab ? { color: "blue" as const, underline: true } : {})}
-                    {...(!provider.enabled ? { dimColor: true } : {})}
-                  >
-                    {provider.enabled ? (isActiveTab ? "▸ " : "  ") : "  "}
-                    {provider.label}
-                    {!provider.enabled ? " (soon)" : ""}
-                  </Text>
-                </Box>
-              );
-            })}
-          </Box>
-
-          <Box flexDirection="column" borderStyle="round" borderColor="blue" paddingX={1}>
-            {activeProvider.models.length === 0 ? (
-              <Text dimColor>No models available</Text>
-            ) : (
-              activeProvider.models.map((model, index) => {
-                const isHighlighted = index === menuModelIndex;
-                const isCurrent = model.id === selectedModel;
-
-                return (
-                  <Text key={model.id} {...(isHighlighted ? { inverse: true } : {})}>
-                    {isHighlighted ? "› " : "  "}
-                    {model.label}
-                    {isCurrent && !isHighlighted ? " ✓" : ""}
-                  </Text>
-                );
-              })
-            )}
-          </Box>
-
-          <Box marginTop={1}>
-            <Text dimColor>↑↓ model · ←→ provider · Enter select · Esc close</Text>
-          </Box>
-        </Box>
-      )}
-    </Box>
+      <Box marginTop={1}>
+        <Text dimColor>
+          Current: {modelLabel(selectedProviderId, selectedModel)} · ↑↓ model · ←→ provider · Enter select
+        </Text>
+      </Box>
+    </OverlayPanel>
   );
 }
