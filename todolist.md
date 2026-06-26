@@ -28,6 +28,81 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 ---
 
+## Cloud deployment blueprint
+
+Reference for splitting today's monolith. **Local today:** everything in `apps/server` (one Bun process). **Cloud target:** gateway + worker pods + shared infra.
+
+### Who uses `@relay/sdk`
+
+| Role | Uses SDK? | Packages instead |
+|------|-----------|------------------|
+| Terminal, web UI, CI scripts | **Yes** | `@relay/sdk`, `@relay/types` |
+| API gateway | No | `@relay/types`, coordination/dispatch/pubsub adapters |
+| Worker pods | No | `@relay/runtime`, `@relay/providers`, `@relay/tools`, adapters |
+| Session coordinator | No | Library only — Redis/etcd client, not a deployable app |
+
+**Rule:** SDK is for **observers**. Gateway and workers never import `@relay/sdk`.
+
+### Target deployables
+
+| Artifact | Type | Responsibility | Key `create*` calls |
+|----------|------|----------------|---------------------|
+| `apps/gateway` | App (evolve `apps/server`) | HTTP, SSE, auth, dispatch — **does not run ReActLoop** | `createQueueDurableExecutor`, `createRedisSessionCoordinator` (client), `createRedisLiveEventPublisher` (subscribe) |
+| `apps/worker` | App (**new**, N pods) | Dequeue tasks, run loop, publish events | `createRuntime`, `createLocalDurableExecutor`, same coordinator/pubsub/storage adapters |
+| `apps/terminal` | App (unchanged) | UI observer | `createClient()` from `@relay/sdk` |
+| Redis / queue | Infra | Leases, task queue, live pub/sub | Not an app — shared by gateway + workers |
+
+### SessionCoordinator — not a pod
+
+- **Infra:** Redis, etcd, or Postgres advisory locks.
+- **Code:** `packages/coordination` → `createRedisSessionCoordinator()` implements `SessionCoordinator` from `@relay/types`.
+- **Used by:** gateway (`resolveOwner`, `routeCancel`) and workers (`acquireLease`, `releaseLease`, `renewLease`).
+- **Maps:** `sessionId → workerId` with TTL leases.
+
+### Two `DurableExecutor` implementations (same interface)
+
+| Side | Factory | Behavior |
+|------|---------|----------|
+| Gateway | `createQueueDurableExecutor()` | Create session metadata, enqueue `ExecutionTask`, return `{ sessionId }` fast |
+| Worker | `createLocalDurableExecutor()` (exists today) | `runtime.execute` / `continue` / `rerun` — runs ReActLoop in-process |
+
+Same `ExecutionTask` type (`kind`: `execute` | `continue` | `rerun`) on both sides.
+
+### Request flow (new session)
+
+```
+Terminal  →  POST /sessions           →  Gateway
+Gateway   →  executor.execute(task)   →  Queue
+Worker    →  dequeue task             →  acquireLease(session, workerId)
+Worker    →  local executor          →  runtime + ReActLoop
+Worker    →  LiveEventPublisher       →  Redis pub/sub
+Gateway   →  SSE subscribe(pub/sub)   →  Terminal
+Worker    →  EventSink                →  shared DB
+```
+
+Cancel: gateway → `coordinator.routeCancel(sessionId)` → signal owning worker. Client SSE disconnect does **not** cancel.
+
+### New packages (planned)
+
+```
+packages/
+  coordination/   createRedisSessionCoordinator()
+  dispatch/       createQueueDurableExecutor()
+  pubsub/         createRedisLiveEventPublisher()
+  storage/        remote EventSink + ExecutionStore (Postgres/S3) — extend existing
+```
+
+### Implementation checklist (cloud split)
+
+- [ ] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
+- [ ] **`apps/gateway`** — Slim `apps/server`: HTTP/SSE only; swap local executor for queue executor; no direct ReActLoop.
+- [ ] **`packages/coordination`** — Redis-backed `SessionCoordinator`.
+- [ ] **`packages/dispatch`** — Queue-backed `DurableExecutor` for gateway.
+- [ ] **`packages/pubsub`** — Redis-backed `LiveEventPublisher` (gateway subscribes, workers publish).
+- [ ] **Remote storage adapter** — Shared `EventSink` / `ExecutionStore` replacing SQLite for multi-pod durability.
+
+---
+
 ## Medium priority
 
 - [ ] **Implement `CheckpointStore` / `ArtifactStore`** — Interfaces exist in `@relay/types`; checkpoints today go through events + `snapshots` table. Artifact storage for large tool outputs is unimplemented.
@@ -42,13 +117,13 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 - [ ] **Native runtime rewrite** — Rust/Go executor once interfaces stabilize; SDK contract stays unchanged.
 
-- [ ] **Remote event store** — Swap SQLite for a remote append-only log; `EventSink` is the seam.
+- [ ] **Remote event store** — Swap SQLite for shared append-only log; see [Cloud deployment blueprint](#cloud-deployment-blueprint). `EventSink` is the seam.
 
-- [ ] **Temporal / durable worker handoff** — Replace `createLocalDurableExecutor` with Temporal-backed implementation.
+- [ ] **Temporal / durable worker handoff** — Alternative to queue: Temporal-backed `DurableExecutor` on gateway; activities map to ReAct iterations.
 
-- [ ] **Remote LiveEventPublisher** — Redis/NATS pub/sub for cross-node SSE fanout.
+- [ ] **Remote LiveEventPublisher** — `packages/pubsub`; Redis/NATS so any gateway pod can SSE any session. See blueprint.
 
-- [ ] **Remote SessionCoordinator** — Redis/etcd leases for multi-worker session ownership.
+- [ ] **Remote SessionCoordinator** — `packages/coordination`; Redis/etcd leases. **Not a separate app** — library + shared Redis. See blueprint.
 
 - [ ] **Multi-provider routing** — Provider selection beyond Gemini; model registry already partially in place.
 
@@ -78,3 +153,5 @@ Track deferred work, optimizations, and North Star follow-ups.
 ## How to use this file
 
 Add new items under the appropriate priority section. Move completed items to **Done** with a date. Link to issues or PRs when they exist.
+
+**For agents:** grep `Cloud deployment blueprint` for the gateway/worker/coordinator split. Local stubs live in `packages/runtime/src/cloud/`. HTTP mutations in `apps/server` go through `createLocalDurableExecutor` today.
