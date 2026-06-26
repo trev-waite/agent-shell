@@ -4,11 +4,18 @@ loadMonorepoEnv();
 
 import Fastify from "fastify";
 import { createGeminiProvider } from "@relay/providers";
-import { createRuntime } from "@relay/runtime";
+import {
+  createLocalDurableExecutor,
+  createLocalLiveEventPublisher,
+  createLocalSessionCoordinator,
+  createRuntime,
+  DEFAULT_WORKER_ID,
+} from "@relay/runtime";
 import {
   createDatabase,
   createExecutionStore,
   createEventProjector,
+  createProjectorEventSink,
   migrateDatabase,
 } from "@relay/storage";
 import { createToolRegistry } from "@relay/tool-registry";
@@ -66,6 +73,7 @@ async function main() {
   const db = createDatabase(DB_PATH);
   const store = createExecutionStore(db);
   const projector = createEventProjector(db);
+  const eventSink = createProjectorEventSink(projector);
   const toolRegistry = createToolRegistry();
   registerTools(toolRegistry);
 
@@ -78,7 +86,29 @@ async function main() {
     apiKey,
     model: defaultModel,
   });
-  const runtime = createRuntime({ store, projector, provider, toolRegistry });
+  const livePublisher = createLocalLiveEventPublisher();
+  let runtime: ReturnType<typeof createRuntime>;
+  const sessionCoordinator = createLocalSessionCoordinator({
+    onCancel: (sessionId) => {
+      runtime.cancel({ sessionId });
+    },
+  });
+
+  runtime = createRuntime({
+    store,
+    eventSink,
+    sessionCoordinator,
+    livePublisher,
+    provider,
+    toolRegistry,
+    workerId: DEFAULT_WORKER_ID,
+  });
+
+  const executor = createLocalDurableExecutor({
+    runtime,
+    coordinator: sessionCoordinator,
+    workerId: DEFAULT_WORKER_ID,
+  });
 
   const app = Fastify({ logger: true });
 
@@ -98,7 +128,8 @@ async function main() {
       return reply.status(400).send({ error: `Unsupported model: ${model}` });
     }
 
-    const sessionId = await runtime.execute({
+    const { sessionId } = await executor.execute({
+      kind: "execute",
       prompt,
       ...(model !== undefined ? { model } : {}),
     });
@@ -120,7 +151,8 @@ async function main() {
       }
 
       try {
-        const continuedSessionId = await runtime.continue({
+        const { sessionId: continuedSessionId } = await executor.execute({
+          kind: "continue",
           sessionId,
           prompt,
           ...(model !== undefined ? { model } : {}),
@@ -157,8 +189,10 @@ async function main() {
         reply.raw.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
       };
 
-      const historical = store.events.getBySession(sessionId, afterId);
-      for (const event of historical) {
+      for await (const event of runtime.replay({
+        sessionId,
+        ...(afterId !== undefined ? { afterEventId: afterId } : {}),
+      })) {
         sendEvent(event);
       }
 
@@ -204,7 +238,7 @@ async function main() {
     "/sessions/:id/cancel",
     async (request) => {
       const { id: sessionId } = request.params;
-      runtime.cancel({ sessionId });
+      await executor.cancel(sessionId);
       return { cancelled: true };
     },
   );
@@ -232,7 +266,8 @@ async function main() {
       }
 
       try {
-        const resumedSessionId = await runtime.rerun({
+        const { sessionId: resumedSessionId } = await executor.execute({
+          kind: "rerun",
           sessionId,
           ...(checkpointId !== undefined ? { checkpointId } : {}),
           ...(model !== undefined ? { model } : {}),

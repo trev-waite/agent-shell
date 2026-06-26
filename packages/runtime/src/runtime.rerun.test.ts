@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { ulid } from "ulid";
-import type { RelayEvent, ExecutionStore, EventProjector } from "@relay/types";
+import type { RelayEvent, ExecutionStore, EventSink } from "@relay/types";
 import type { LLMProvider } from "@relay/providers";
 import { createToolRegistry } from "@relay/tool-registry";
+import { createTestCloudDeps } from "./test-support/cloud-deps.js";
 import { Runtime } from "./runtime.js";
 
 function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
@@ -32,10 +33,18 @@ function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
   };
 }
 
-function createMockProjector(store: ExecutionStore): EventProjector {
+function createMockEventSink(store: ExecutionStore): EventSink {
+  let chain = Promise.resolve();
   return {
-    persist(event: RelayEvent) {
-      store.events.append(event);
+    write(event: RelayEvent): Promise<void> {
+      const next = chain.then(() => {
+        store.events.append(event);
+      });
+      chain = next.catch(() => {});
+      return Promise.resolve();
+    },
+    flush(): Promise<void> {
+      return chain;
     },
   };
 }
@@ -83,9 +92,12 @@ describe("Runtime.rerun", () => {
     ];
 
     const store = createMockStore(priorEvents);
+    const cloud = createTestCloudDeps();
     const runtime = new Runtime({
       store,
-      projector: createMockProjector(store),
+      eventSink: createMockEventSink(store),
+      sessionCoordinator: cloud.sessionCoordinator,
+      livePublisher: cloud.livePublisher,
       provider: createMockProvider(),
       toolRegistry: createToolRegistry(),
     });
@@ -125,9 +137,12 @@ describe("Runtime.rerun", () => {
       },
     ]);
 
+    const cloud = createTestCloudDeps();
     const runtime = new Runtime({
       store,
-      projector: createMockProjector(store),
+      eventSink: createMockEventSink(store),
+      sessionCoordinator: cloud.sessionCoordinator,
+      livePublisher: cloud.livePublisher,
       provider: {
         async stream() {
           await new Promise((resolve) => setTimeout(resolve, 500));

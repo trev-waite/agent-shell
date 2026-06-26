@@ -1,12 +1,86 @@
 # Relay (Agent Shell)
 
-A **local-first execution runtime** for AI agents with a terminal-native UI.
+A **local-first execution runtime** for AI agents with a terminal-native UI — event-sourced, not a chatbot wrapper. The event log is the system of record; the terminal is a disposable projection.
 
-Relay is an event-sourced execution runtime — not a chatbot framework, cloud orchestration platform, or web application. Everything runs locally. The event log is the system of record; the terminal UI is a disposable projection.
+See [North Star](#north-star) for design intent, invariants, and the [cloud-ready layer diagram](#cloud-ready-layers).
+
+## North Star
+
+Relay owns agent loop state, streams events to observers, and persists an append-only record — with every local interface designed as a future cloud seam.
+
+**What it is:** The thing that owns execution state, drives the agent loop, and lets clients observe without depending on them.
+
+**The core insight:** The agent loop (ReAct), persistence, and client transport are three separate concerns. Relay keeps them explicitly separated from day one.
+
+**The design rule:**
+
+> The runtime runs. Clients watch. Storage records. None of them need each other to function.
+
+**Invariants** (enforced in code and tested):
+
+| Invariant | Meaning |
+|-----------|---------|
+| UI refresh never interrupts execution | Runtime server is a separate process; the terminal is a disposable subscriber |
+| Storage never blocks token streaming | Events fan out to observers first; persistence runs asynchronously via `EventSink` |
+| Client disconnect never cancels the agent | SSE `close` unsubscribes the observer only — execution continues |
+
+**Future direction (design for, don't build yet):** `ExecutionLoop`, `ExecutionStore`, `EventStore`, `EventSink`, `LiveEventPublisher`, `DurableExecutor`, and `SessionCoordinator` — swap implementations at these seams for durable execution, cross-device resume, and worker isolation without rewriting the loop.
+
+### Cloud-ready layers
+
+Local today = **one Bun process** (`apps/server`). `DurableExecutor`, `SessionCoordinator`, and `LiveEventPublisher` are wired as **in-process stubs** — same node, swappable interfaces. Cloud deployment splits them across gateway, workers, and shared stores.
+
+```mermaid
+flowchart TB
+  subgraph clients [Clients - any device]
+    T[Terminal / Web / CI]
+  end
+
+  subgraph transport [Transport - stateless API]
+    SDK["@relay/sdk"]
+    HTTP[Fastify / apps/server]
+  end
+
+  subgraph execution [Execution - stateful worker]
+    RT["@relay/runtime"]
+    LOOP[ReActLoop]
+    EXEC[DurableExecutor]
+    COORD[SessionCoordinator]
+    TOOLS["@relay/tools"]
+    PROV["@relay/providers"]
+  end
+
+  subgraph persistence [Persistence - shared store]
+    LIVE[LiveEventPublisher]
+    ES[EventSink]
+    STORE[ExecutionStore]
+    DB[(SQLite today / remote later)]
+  end
+
+  T --> SDK --> HTTP --> EXEC
+  EXEC --> RT --> LOOP
+  RT --> COORD
+  RT --> LIVE
+  RT --> ES --> STORE --> DB
+  RT --> TOOLS
+  RT --> PROV
+  LIVE -.-> SDK
+```
+
+| Layer | Package / seam | Local today | Cloud later |
+|-------|----------------|-------------|-------------|
+| Observer | `@relay/sdk` | Terminal | Web, mobile, CI |
+| Transport | `apps/server` | Fastify on localhost | API gateway + SSE |
+| Dispatch | `DurableExecutor` | In-process stub | Queue / Temporal worker |
+| Coordination | `SessionCoordinator` | In-memory lease stub | Redis / etcd |
+| Live fanout | `LiveEventPublisher` | In-process EventEmitter | Redis / NATS pub/sub |
+| Execution | `@relay/runtime` | ReAct loop | Same loop on worker VM |
+| Durability | `EventSink` | Async SQLite | Remote append-only log |
 
 ## Contents
 
 - [Quick Start](#quick-start)
+- [North Star](#north-star) — design intent, invariants, cloud layer diagram
 - [Architecture](#architecture)
 - [Relay SDK](#relay-sdk-relaysdk)
 - [Event Sourcing](#event-sourcing)
@@ -112,27 +186,23 @@ The runtime restores the latest checkpoint, appends the new user message, and ru
 
 ## Architecture
 
+**Two processes** for daily use — runtime server + disposable terminal. **One process** inside the server today: Fastify, `DurableExecutor`, `SessionCoordinator`, `LiveEventPublisher`, and `@relay/runtime` all run in the same Bun process. See [Cloud-ready layers](#cloud-ready-layers) for how that maps to a distributed deployment.
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                     Process 2: Terminal                      │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  Ink 7 UI (apps/terminal)                           │    │
-│  │  Conversation log · inline trace · overlay panels   │    │
-│  └──────────────────────┬──────────────────────────────┘    │
-│                         │ @relay/sdk (SSE)                   │
-└─────────────────────────┼───────────────────────────────────┘
-                          │ localhost only
-┌─────────────────────────┼───────────────────────────────────┐
-│                         ▼                                      │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │  Fastify Server (apps/server)                       │    │
-│  └──────────────────────┬──────────────────────────────┘    │
-│                         │                                      │
-│  ┌──────────┐  ┌────────▼────────┐  ┌──────────────────┐     │
-│  │ providers│  │ runtime         │  │ storage          │     │
-│  │ (Gemini) │  │ ReActLoop       │  │ SQLite + Drizzle │     │
-│  └──────────┘  └─────────────────┘  └──────────────────┘     │
-│                     Process 1: Runtime Server                  │
+│  Ink UI (apps/terminal)  ── @relay/sdk (HTTP + SSE) ───────┼──┐
+└─────────────────────────────────────────────────────────────┘  │
+                          localhost only                           │
+┌─────────────────────────────────────────────────────────────┐  │
+│              Process 1: Runtime Server (apps/server)         │◄─┘
+│                                                              │
+│  Fastify ──► DurableExecutor ──► @relay/runtime (ReActLoop) │
+│                  │                    │                      │
+│                  │         SessionCoordinator (lease stub)   │
+│                  │         LiveEventPublisher (fanout stub)  │
+│                  │         EventSink ──► SQLite              │
+│                  └── providers (Gemini) · tools (local FS)  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -297,11 +367,13 @@ SQLite (via `bun:sqlite` + Drizzle ORM) is the **execution store**, not an analy
 
 Messages are never written directly by the loop or tools — only projected by the runtime after `message.completed`.
 
+**Async persistence:** The runtime fans out events to live observers before writing to storage. `createProjectorEventSink()` wraps the SQLite projector as an `EventSink` — `write()` returns immediately; events persist serially on a background chain. The loop calls `flush()` when a session finishes so durability is guaranteed before the session goes idle.
+
 ## Runtime API
 
 The server-side runtime (`@relay/runtime`) is for execution internals and contributors — not for UI clients. Use [`@relay/sdk`](#relay-sdk-relaysdk) from anything that renders or observes.
 
-**HTTP routes** (Fastify, `apps/server`):
+**HTTP routes** (Fastify, `apps/server`) — mutations go through `DurableExecutor`; reads and SSE use `Runtime` directly:
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -317,14 +389,20 @@ The server-side runtime (`@relay/runtime`) is for execution internals and contri
 | `GET` | `/health` | Health check |
 
 ```typescript
-runtime.execute({ prompt })                    // Start new session
-runtime.continue({ sessionId, prompt })        // Follow-up message on existing session
-runtime.replay({ sessionId })                  // Stream historical events (read-only)
-runtime.rerun({ sessionId, checkpointId? })    // Resume from checkpoint (mid-turn)
-runtime.listCheckpoints(sessionId)             // List saved checkpoints for a session
-runtime.cancel({ sessionId })                  // Abort in-flight execution
-runtime.subscribe({ sessionId })               // Live event fanout (in-process)
+// apps/server composition (simplified)
+const executor = createLocalDurableExecutor({ runtime, coordinator, workerId });
+
+executor.execute({ kind: "execute", prompt });           // POST /sessions
+executor.execute({ kind: "continue", sessionId, prompt }); // POST /sessions/:id/messages
+executor.execute({ kind: "rerun", sessionId, checkpointId }); // POST /sessions/:id/rerun
+executor.cancel(sessionId);                              // POST /sessions/:id/cancel
+
+runtime.replay({ sessionId });                           // SSE history + reconnect
+runtime.onSessionEvent(sessionId, handler);            // Live SSE fanout
+runtime.listCheckpoints(sessionId);
 ```
+
+Local stub factories live in `@relay/runtime/cloud`: `createLocalDurableExecutor`, `createLocalSessionCoordinator`, `createLocalLiveEventPublisher`.
 
 ## Monorepo
 
@@ -334,13 +412,13 @@ apps/
   server/        ← Fastify runtime server
 
 packages/
-  runtime/       ← execution engine (no HTTP)
+  runtime/       ← execution engine + local cloud stubs (no HTTP)
   providers/     ← Gemini LLM adapter
-  storage/       ← bun:sqlite event store + Drizzle schema
+  storage/       ← bun:sqlite event store + EventSink adapter
   tools/         ← file.read, shell.exec implementations
   tool-registry/ ← tool abstraction layer
   sdk/           ← runtime client (SSE transport)
-  types/         ← shared event + system types, model provider registry
+  types/         ← shared events, storage, and cloud seam interfaces
 ```
 
 Internal packages use the workspace protocol: `"@relay/sdk": "workspace:*"`
