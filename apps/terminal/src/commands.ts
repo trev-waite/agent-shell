@@ -14,6 +14,11 @@ export interface SlashCommandResult {
   message?: string;
 }
 
+export interface RunSlashCommandOptions {
+  onNewSession?: () => void;
+  menuIndex?: number;
+}
+
 export const SLASH_COMMANDS: SlashCommandDef[] = [
   {
     name: "model",
@@ -21,29 +26,14 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     actions: [{ type: "OPEN_OVERLAY", panel: "model" }],
   },
   {
-    name: "trace",
-    description: "Show tool trace",
-    actions: [{ type: "OPEN_OVERLAY", panel: "trace" }],
-  },
-  {
-    name: "metrics",
-    description: "Show session metrics",
-    actions: [{ type: "OPEN_OVERLAY", panel: "metrics" }],
+    name: "session",
+    description: "Show trace and metrics",
+    actions: [{ type: "OPEN_OVERLAY", panel: "session" }],
   },
   {
     name: "theme",
     description: "Cycle theme (or: dark, light, auto)",
     actions: [{ type: "CYCLE_COLOR_SCHEME" }],
-  },
-  {
-    name: "expand",
-    description: "Expand focused trace item",
-    actions: [{ type: "EXPAND_TRACE_FOCUS" }],
-  },
-  {
-    name: "collapse",
-    description: "Collapse focused trace item",
-    actions: [{ type: "COLLAPSE_TRACE_FOCUS" }],
   },
   {
     name: "new",
@@ -57,6 +47,34 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     actions: [],
   },
 ];
+
+/** Legacy aliases — open the combined session panel. */
+const SESSION_ALIASES = new Set(["trace", "metrics"]);
+
+function isKnownSlashName(name: string): boolean {
+  return SLASH_COMMANDS.some((c) => c.name === name) || SESSION_ALIASES.has(name);
+}
+
+/** Use typed input when it's a full command; otherwise fall back to the palette selection. */
+export function resolveSlashInput(input: string, menuIndex: number): string {
+  const trimmed = input.trim();
+  if (!trimmed.startsWith("/")) return trimmed;
+
+  const body = trimmed.slice(1);
+  const spaceIdx = body.indexOf(" ");
+  const name = (spaceIdx === -1 ? body : body.slice(0, spaceIdx)).toLowerCase();
+  const args = spaceIdx === -1 ? "" : body.slice(spaceIdx + 1).trim();
+
+  if (isKnownSlashName(name)) {
+    return trimmed;
+  }
+
+  const filtered = filterSlashCommands(trimmed);
+  const selected = filtered[Math.max(0, Math.min(menuIndex, filtered.length - 1))];
+  if (!selected) return trimmed;
+
+  return args ? `/${selected.name} ${args}` : `/${selected.name}`;
+}
 
 export function slashCommandsHelp(): string {
   return SLASH_COMMANDS.map((c) => `/${c.name} — ${c.description}`).join(" · ");
@@ -77,7 +95,10 @@ export function filterSlashCommands(input: string): SlashCommandDef[] {
 
 function parseThemeArg(arg: string | undefined): SlashCommandResult | null {
   if (!arg) {
-    return { actions: [{ type: "CYCLE_COLOR_SCHEME" }] };
+    return {
+      actions: [{ type: "CYCLE_COLOR_SCHEME" }],
+      message: "Theme cycled (auto → dark → light)",
+    };
   }
   const lower = arg.toLowerCase();
   if (lower === "auto" || lower === "dark" || lower === "light") {
@@ -97,6 +118,10 @@ export function parseSlashCommand(input: string): SlashCommandResult | null {
   const spaceIdx = body.indexOf(" ");
   const name = (spaceIdx === -1 ? body : body.slice(0, spaceIdx)).toLowerCase();
   const arg = spaceIdx === -1 ? undefined : body.slice(spaceIdx + 1).trim();
+
+  if (SESSION_ALIASES.has(name)) {
+    return { actions: [{ type: "OPEN_OVERLAY", panel: "session" }] };
+  }
 
   const def = SLASH_COMMANDS.find((c) => c.name === name);
   if (def) {
@@ -118,39 +143,34 @@ export function parseSlashCommand(input: string): SlashCommandResult | null {
   };
 }
 
-export function slashCommandAtIndex(index: number, input: string): SlashCommandDef | undefined {
-  const filtered = filterSlashCommands(input);
-  return filtered[Math.max(0, Math.min(index, filtered.length - 1))];
-}
-
 export function dispatchSlashResult(
   dispatch: Dispatch<UIAction>,
   result: SlashCommandResult,
 ): void {
-  dispatch({ type: "SET_INPUT", input: "" });
   for (const action of result.actions) {
     dispatch(action);
   }
+  dispatch({ type: "SET_INPUT", input: "" });
   if (result.message) {
     dispatch({ type: "SET_COMMAND_NOTICE", message: result.message });
   }
 }
 
-export function executeSlashAtIndex(
-  dispatch: Dispatch<UIAction>,
-  index: number,
+export function runSlashCommand(
   input: string,
-): void {
-  const def = slashCommandAtIndex(index, input);
-  if (!def) {
-    dispatch({ type: "CLOSE_OVERLAY" });
-    return;
+  dispatch: Dispatch<UIAction>,
+  options?: RunSlashCommandOptions,
+): boolean {
+  const resolved = resolveSlashInput(input, options?.menuIndex ?? 0);
+  const result = parseSlashCommand(resolved);
+  if (!result) return false;
+
+  if (result.actions.some((action) => action.type === "NEW_SESSION")) {
+    options?.onNewSession?.();
   }
 
-  const result = parseSlashCommand(`/${def.name}`);
-  if (result) {
-    dispatchSlashResult(dispatch, result);
-  }
+  dispatchSlashResult(dispatch, result);
+  return true;
 }
 
 export function isSlashCommand(input: string): boolean {

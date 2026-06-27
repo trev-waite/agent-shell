@@ -66,6 +66,43 @@ describe("uiReducer timestamps and tool I/O", () => {
     expect(afterComplete.traces[0]?.output).toEqual({ rows: 5 });
     expect(afterComplete.traces[0]?.status).toBe("completed");
   });
+
+  test("accumulates cost.updated events across turns and tool-loop iterations", () => {
+    const first: RelayEvent = {
+      id: "cost-1",
+      sessionId: "s",
+      type: "cost.updated",
+      timestamp: 100,
+      payload: {
+        inputTokens: 100,
+        outputTokens: 50,
+        totalCost: 0.00003,
+        currency: "USD",
+      },
+    };
+    const second: RelayEvent = {
+      id: "cost-2",
+      sessionId: "s",
+      type: "cost.updated",
+      timestamp: 200,
+      payload: {
+        inputTokens: 80,
+        outputTokens: 20,
+        totalCost: 0.000016,
+        currency: "USD",
+      },
+    };
+
+    const afterFirst = uiReducer(initialState, { type: "EVENT", event: first });
+    expect(afterFirst.metrics.inputTokens).toBe(100);
+    expect(afterFirst.metrics.outputTokens).toBe(50);
+    expect(afterFirst.metrics.totalCost).toBe(0.00003);
+
+    const afterSecond = uiReducer(afterFirst, { type: "EVENT", event: second });
+    expect(afterSecond.metrics.inputTokens).toBe(180);
+    expect(afterSecond.metrics.outputTokens).toBe(70);
+    expect(afterSecond.metrics.totalCost).toBe(0.000046);
+  });
 });
 
 describe("uiReducer UI actions", () => {
@@ -114,18 +151,18 @@ describe("uiReducer UI actions", () => {
   });
 
   test("OPEN_OVERLAY and CLOSE_OVERLAY", () => {
-    const opened = uiReducer(initialState, { type: "OPEN_OVERLAY", panel: "trace" });
-    expect(opened.activeOverlay).toBe("trace");
+    const opened = uiReducer(initialState, { type: "OPEN_OVERLAY", panel: "session" });
+    expect(opened.activeOverlay).toBe("session");
 
     const closed = uiReducer(opened, { type: "CLOSE_OVERLAY" });
     expect(closed.activeOverlay).toBe("none");
   });
 
-  test("TOGGLE_OVERLAY switches trace panel", () => {
-    const opened = uiReducer(initialState, { type: "TOGGLE_OVERLAY", panel: "trace" });
-    expect(opened.activeOverlay).toBe("trace");
+  test("TOGGLE_OVERLAY switches session panel", () => {
+    const opened = uiReducer(initialState, { type: "TOGGLE_OVERLAY", panel: "session" });
+    expect(opened.activeOverlay).toBe("session");
 
-    const closed = uiReducer(opened, { type: "TOGGLE_OVERLAY", panel: "trace" });
+    const closed = uiReducer(opened, { type: "TOGGLE_OVERLAY", panel: "session" });
     expect(closed.activeOverlay).toBe("none");
   });
 
@@ -280,7 +317,7 @@ describe("projections", () => {
       true,
     );
     expect(status.label).toBe("RUNNING");
-    expect(status.colorKey).toBe("motion");
+    expect(status.dotVariant).toBe("active");
   });
 
   test("buildMetricsGrid condenses for compact layout", () => {
@@ -312,7 +349,18 @@ describe("projections", () => {
       currency: "USD",
     });
     expect(usage).toContain("1,243 tok");
-    expect(usage).toContain("0.0030 USD");
+    expect(usage).toContain("0.0030 USD (est)");
+  });
+
+  test("formatHeaderUsage shows extra precision for sub-cent costs", () => {
+    const usage = formatHeaderUsage({
+      ...initialState.metrics,
+      inputTokens: 500,
+      outputTokens: 100,
+      totalCost: 0.00009,
+      currency: "USD",
+    });
+    expect(usage).toContain("0.000090 USD (est)");
   });
 });
 

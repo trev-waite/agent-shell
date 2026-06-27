@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import { useTheme } from "../hooks/ThemeContext.js";
 import { deriveFooterStatus } from "../projections/footer.js";
+import { computeChatMaxRows, type ChatChromeOptions } from "../projections/chatViewport.js";
 import { EDGE_PADDING, type LayoutConfig } from "../theme.js";
 import type { UIState } from "../state.js";
 import { ChatPanel } from "./ChatPanel.js";
@@ -22,6 +23,13 @@ export function AppShell({ state, layout }: AppShellProps) {
     state.activity,
     state.serverOnline,
   );
+
+  const chatChrome: ChatChromeOptions = {
+    serverOffline: state.serverOnline === false,
+    notice: state.commandNotice,
+    queueCount: state.messageQueue.length,
+    hasOverlay: state.activeOverlay !== "none",
+  };
 
   return (
     <Box
@@ -53,6 +61,7 @@ export function AppShell({ state, layout }: AppShellProps) {
         traces={state.traces}
         activity={state.activity}
         layout={layout}
+        maxRows={computeChatMaxRows(layout, chatChrome)}
       />
 
       <Box flexDirection="column" flexShrink={0} width={layout.columns}>

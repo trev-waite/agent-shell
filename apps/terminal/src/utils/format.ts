@@ -19,6 +19,13 @@ export function formatTokens(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+/** Display cost with enough precision for sub-cent API usage. */
+export function formatCost(totalCost: number, currency: string): string {
+  if (totalCost === 0) return `0.0000 ${currency}`;
+  if (totalCost < 0.0001) return `${totalCost.toFixed(6)} ${currency}`;
+  return `${totalCost.toFixed(4)} ${currency}`;
+}
+
 export function formatJson(value: unknown, maxCols: number): string {
   let text: string;
   try {

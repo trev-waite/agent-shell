@@ -1,7 +1,19 @@
 export type ColorScheme = "dark" | "light";
 export type ColorSchemePreference = "auto" | ColorScheme;
 
-export type ThemeColorKey = "text" | "muted" | "border" | "status" | "motion" | "error" | "warning" | "user" | "agent" | "queueBg";
+export type ThemeColorKey =
+  | "text"
+  | "muted"
+  | "border"
+  | "status"
+  | "motion"
+  | "error"
+  | "warning"
+  | "success"
+  | "user"
+  | "userBg"
+  | "agent"
+  | "queueBg";
 
 export interface Theme {
   text: string;
@@ -10,9 +22,11 @@ export interface Theme {
   status: string;
   motion: string;
   user: string;
+  userBg: string;
   agent: string;
   error: string;
   warning: string;
+  success: string;
   queueBg: string;
 }
 
@@ -31,9 +45,11 @@ export const darkTheme: Theme = {
   status: palette.olive,
   motion: palette.cream,
   user: palette.sage,
+  userBg: "#2a2e28",
   agent: palette.slate,
   error: "red",
   warning: "gray",
+  success: "#4ade80",
   queueBg: "#2e2e28",
 };
 
@@ -44,9 +60,11 @@ export const lightTheme: Theme = {
   status: palette.olive,
   motion: palette.slate,
   user: palette.olive,
+  userBg: "#e4e0d6",
   agent: palette.slate,
   error: "red",
   warning: "gray",
+  success: "#16a34a",
   queueBg: "#ddd8ce",
 };
 

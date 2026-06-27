@@ -9,9 +9,8 @@ import { ThemeProvider } from "./hooks/ThemeContext.js";
 import { useLayoutMode } from "./hooks/useLayoutMode.js";
 import { handleKey } from "./keyboard.js";
 import {
-  dispatchSlashResult,
+  runSlashCommand,
   isSlashCommand,
-  parseSlashCommand,
 } from "./commands.js";
 import {
   uiReducer,
@@ -89,14 +88,13 @@ function handleInputSubmit(
   if (!prompt) return;
 
   if (isSlashCommand(prompt)) {
-    const slash = parseSlashCommand(prompt);
-    if (slash) {
-      if (slash.actions.some((action) => action.type === "NEW_SESSION")) {
+    runSlashCommand(prompt, dispatch, {
+      onNewSession: () => {
         options.endSessionStream();
         cancelServerSession(state.sessionId);
-      }
-      dispatchSlashResult(dispatch, slash);
-    }
+      },
+      menuIndex: state.slashMenuIndex,
+    });
     return;
   }
 
@@ -255,9 +253,23 @@ function TerminalApp() {
   }, [state.commandNotice]);
 
   useInput((input, key) => {
-    const result = handleKey(input, key, { state, layout, exit }, dispatch);
+    const current = stateRef.current;
+    const result = handleKey(
+      input,
+      key,
+      {
+        state: current,
+        layout,
+        exit,
+        onNewSession: () => {
+          endSessionStream();
+          cancelServerSession(current.sessionId);
+        },
+      },
+      dispatch,
+    );
     if (result === "submit") {
-      handleInputSubmit(state, dispatch, subscribeToSession, {
+      handleInputSubmit(current, dispatch, subscribeToSession, {
         submitPending: submitPendingRef.current,
         setSubmitPending: (pending) => {
           submitPendingRef.current = pending;

@@ -1,10 +1,6 @@
 import type { LayoutMode } from "../theme.js";
 import type { Metrics, ToolTrace } from "../state.js";
-import { formatDuration, formatTokens } from "../utils/format.js";
-
-function formatCost(totalCost: number, currency: string): string {
-  return `${totalCost.toFixed(6)} ${currency}`;
-}
+import { formatCost, formatDuration, formatTokens } from "../utils/format.js";
 
 export type MetricColorKey = "text" | "status" | "motion" | "error";
 

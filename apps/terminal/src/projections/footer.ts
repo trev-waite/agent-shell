@@ -1,9 +1,10 @@
 import type { ActivityStatus, Metrics } from "../state.js";
-import type { ThemeColorKey } from "../theme.js";
+
+export type StatusDotVariant = "success" | "active" | "error" | "warning" | "muted";
 
 export interface FooterStatus {
   label: string;
-  colorKey: ThemeColorKey;
+  dotVariant: StatusDotVariant;
 }
 
 export function deriveFooterStatus(
@@ -12,24 +13,24 @@ export function deriveFooterStatus(
   serverOnline: boolean | null,
 ): FooterStatus {
   if (serverOnline === false) {
-    return { label: "OFFLINE", colorKey: "error" };
+    return { label: "OFFLINE", dotVariant: "error" };
   }
 
   if (serverOnline === null) {
-    return { label: "CHECKING", colorKey: "warning" };
+    return { label: "CHECKING", dotVariant: "warning" };
   }
 
   if (activity !== null || metrics.sessionStatus === "running") {
-    return { label: "RUNNING", colorKey: "motion" };
+    return { label: "RUNNING", dotVariant: "active" };
   }
 
   if (metrics.sessionStatus === "failed") {
-    return { label: "FAILED", colorKey: "error" };
+    return { label: "FAILED", dotVariant: "error" };
   }
 
   if (metrics.sessionStatus === "completed") {
-    return { label: "DONE", colorKey: "status" };
+    return { label: "DONE", dotVariant: "success" };
   }
 
-  return { label: "READY", colorKey: "status" };
+  return { label: "READY", dotVariant: "success" };
 }

@@ -42,7 +42,7 @@ export interface Metrics {
   sessionStatus: string;
 }
 
-export type OverlayPanel = "none" | "slash" | "trace" | "metrics" | "model";
+export type OverlayPanel = "none" | "slash" | "session" | "model";
 
 export interface QueuedMessage {
   id: string;
@@ -503,13 +503,16 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         }
         case "cost.updated": {
           const payload = event.payload;
+          const totalCost =
+            Math.round((base.metrics.totalCost + payload.totalCost) * 1_000_000) /
+            1_000_000;
           return {
             ...base,
             metrics: {
               ...base.metrics,
-              inputTokens: payload.inputTokens,
-              outputTokens: payload.outputTokens,
-              totalCost: payload.totalCost,
+              inputTokens: base.metrics.inputTokens + payload.inputTokens,
+              outputTokens: base.metrics.outputTokens + payload.outputTokens,
+              totalCost,
               currency: payload.currency,
               sessionStatus: "completed",
             },

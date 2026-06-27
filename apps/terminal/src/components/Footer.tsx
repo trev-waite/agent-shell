@@ -22,7 +22,7 @@ export function Footer({ status, width }: FooterProps) {
       paddingX={1}
       justifyContent="space-between"
     >
-      <StatusDot label={status.label} colorKey={status.colorKey} />
+      <StatusDot label={status.label} dotVariant={status.dotVariant} />
       <Text dimColor>{HINTS}</Text>
       <Text dimColor>v{VERSION}</Text>
     </Box>

@@ -90,6 +90,7 @@ export class ReActLoop implements ExecutionLoop {
         });
 
         assistantContent = result.text || assistantContent;
+        emitCostDelta(emit, sessionId, result.inputTokens, result.outputTokens);
 
         if (result.toolCalls.length === 0) {
           this.messages.push({ role: "assistant", content: sanitize(assistantContent) });
@@ -103,19 +104,6 @@ export class ReActLoop implements ExecutionLoop {
               messageId: assistantMessageId,
               role: "assistant",
               content: sanitize(assistantContent),
-            },
-          });
-
-          emit({
-            id: ulid(),
-            sessionId,
-            type: "cost.updated",
-            timestamp: Date.now(),
-            payload: {
-              inputTokens: result.inputTokens,
-              outputTokens: result.outputTokens,
-              totalCost: estimateCost(result.inputTokens, result.outputTokens),
-              currency: "USD",
             },
           });
 
@@ -358,5 +346,31 @@ The user sees your replies in a plain terminal (not a browser). Write for that U
 function estimateCost(inputTokens: number, outputTokens: number): number {
   const inputCost = (inputTokens / 1_000_000) * 0.1;
   const outputCost = (outputTokens / 1_000_000) * 0.4;
-  return Math.round((inputCost + outputCost) * 1_000_000) / 1_000_000;
+  return roundCost(inputCost + outputCost);
+}
+
+function roundCost(value: number): number {
+  return Math.round(value * 1_000_000) / 1_000_000;
+}
+
+function emitCostDelta(
+  emit: EventHandler,
+  sessionId: string,
+  inputTokens: number,
+  outputTokens: number,
+): void {
+  if (inputTokens === 0 && outputTokens === 0) return;
+
+  emit({
+    id: ulid(),
+    sessionId,
+    type: "cost.updated",
+    timestamp: Date.now(),
+    payload: {
+      inputTokens,
+      outputTokens,
+      totalCost: estimateCost(inputTokens, outputTokens),
+      currency: "USD",
+    },
+  });
 }
