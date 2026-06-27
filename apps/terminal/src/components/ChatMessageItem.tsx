@@ -59,13 +59,21 @@ export function ChatMessageItem({
     >
       {msg.role === "user" ? (
         <Box flexDirection="column">
-          <Box flexDirection="row">
-            <Text color={theme.motion}>❯ </Text>
-            <Text color={theme.user} wrap="wrap">
+          <Box
+            paddingX={1}
+            paddingY={0}
+            backgroundColor={theme.userBg}
+            borderStyle="single"
+            borderColor={theme.user}
+            borderTop={false}
+            borderRight={false}
+            borderBottom={false}
+          >
+            <Text bold color={theme.text} wrap="wrap">
               {content}
             </Text>
           </Box>
-          <Box justifyContent="flex-end">
+          <Box justifyContent="flex-end" marginTop={0}>
             <Text dimColor>{formatTimestamp(msg.timestamp)}</Text>
           </Box>
         </Box>

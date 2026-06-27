@@ -11,6 +11,7 @@ export type ThemeColorKey =
   | "warning"
   | "success"
   | "user"
+  | "userBg"
   | "agent"
   | "queueBg";
 
@@ -21,6 +22,7 @@ export interface Theme {
   status: string;
   motion: string;
   user: string;
+  userBg: string;
   agent: string;
   error: string;
   warning: string;
@@ -43,6 +45,7 @@ export const darkTheme: Theme = {
   status: palette.olive,
   motion: palette.cream,
   user: palette.sage,
+  userBg: "#2a2e28",
   agent: palette.slate,
   error: "red",
   warning: "gray",
@@ -57,6 +60,7 @@ export const lightTheme: Theme = {
   status: palette.olive,
   motion: palette.slate,
   user: palette.olive,
+  userBg: "#e4e0d6",
   agent: palette.slate,
   error: "red",
   warning: "gray",

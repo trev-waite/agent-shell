@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import { modelLabel } from "@relay/types";
 import type { GeminiModelId, ModelProviderId } from "@relay/types";
 import { useTheme } from "../hooks/ThemeContext.js";
-import type { LayoutConfig } from "../theme.js";
+import { COMPACT_BREAKPOINT, type LayoutConfig } from "../theme.js";
 
 interface InputBoxProps {
   value: string;
@@ -20,8 +20,9 @@ export function InputBox({
   notice,
 }: InputBoxProps) {
   const theme = useTheme();
-  const showSendHint = layout.columns >= 60;
+  const showModelHint = layout.columns >= COMPACT_BREAKPOINT;
   const modelName = modelLabel(selectedProviderId, selectedModel);
+  const tabActive = value.length === 0;
 
   return (
     <Box flexDirection="column" width={layout.columns}>
@@ -48,10 +49,11 @@ export function InputBox({
           <Text dimColor>_</Text>
         </Box>
         <Box>
-          {showSendHint && (
+          {showModelHint && (
             <>
-              <Text dimColor>{modelName} · </Text>
-              <Text color={theme.motion}>→</Text>
+              <Text dimColor>{modelName}</Text>
+              <Text dimColor> · </Text>
+              <Text color={tabActive ? theme.motion : theme.muted}>Tab</Text>
             </>
           )}
         </Box>

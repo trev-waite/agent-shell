@@ -44,7 +44,7 @@ export function ChatPanel({
         >
           <Box marginBottom={1}>
             <Text bold color={theme.text}>
-              Hello There!
+              Hello There.
             </Text>
           </Box>
           <Text dimColor>No messages yet. Type a prompt below.</Text>

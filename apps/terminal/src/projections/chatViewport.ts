@@ -72,7 +72,7 @@ export function computeChatMaxRows(
 }
 
 export function messageContentWidth(role: ChatMessage["role"], columns: number): number {
-  const padding = role === "user" ? 5 : 3;
+  const padding = role === "user" ? 4 : 3;
   return Math.max(1, columns - padding);
 }
 
