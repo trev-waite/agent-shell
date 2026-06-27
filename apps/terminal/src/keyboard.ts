@@ -3,7 +3,7 @@ import type { Key } from "ink";
 import type { LayoutConfig } from "./theme.js";
 import type { UIAction, UIState } from "./state.js";
 import {
-  executeSlashAtIndex,
+  runSlashCommand,
   isSlashCommand,
 } from "./commands.js";
 import { isPanelOverlay } from "./stateHelpers.js";
@@ -12,6 +12,7 @@ export interface KeyContext {
   state: UIState;
   layout: LayoutConfig;
   exit: () => void;
+  onNewSession?: () => void;
 }
 
 type KeyMatcher = (input: string, key: Key) => boolean;
@@ -122,7 +123,10 @@ export const KEY_BINDINGS: KeyBinding[] = [
     match: (_input, key) => key.return,
     when: (ctx) => overlayIs(ctx, "slash"),
     run: (_input, ctx, dispatch) => {
-      executeSlashAtIndex(dispatch, ctx.state.slashMenuIndex, ctx.state.input);
+      const options = ctx.onNewSession
+        ? { onNewSession: ctx.onNewSession, menuIndex: ctx.state.slashMenuIndex }
+        : { menuIndex: ctx.state.slashMenuIndex };
+      runSlashCommand(ctx.state.input, dispatch, options);
       return true;
     },
   },
@@ -147,7 +151,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
   {
     id: "trace-expand",
     match: (input, key) => input === "]" && !mod(key),
-    when: (ctx) => overlayIs(ctx, "trace"),
+    when: (ctx) => overlayIs(ctx, "session"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "EXPAND_TRACE_FOCUS" });
       return true;
@@ -156,7 +160,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
   {
     id: "trace-collapse",
     match: (input, key) => input === "[" && !mod(key),
-    when: (ctx) => overlayIs(ctx, "trace"),
+    when: (ctx) => overlayIs(ctx, "session"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "COLLAPSE_TRACE_FOCUS" });
       return true;
@@ -211,20 +215,11 @@ export const KEY_BINDINGS: KeyBinding[] = [
     },
   },
   {
-    id: "toggle-trace-overlay",
-    match: (input, key) => modShiftKey(input, key, "t"),
+    id: "toggle-session-overlay",
+    match: (input, key) => modShiftKey(input, key, "s"),
     when: (ctx) => !overlayIs(ctx, "model") && !overlayIs(ctx, "slash"),
     run: (_input, _ctx, dispatch) => {
-      dispatch({ type: "TOGGLE_OVERLAY", panel: "trace" });
-      return true;
-    },
-  },
-  {
-    id: "toggle-metrics-overlay",
-    match: (input, key) => modShiftKey(input, key, "m"),
-    when: (ctx) => !overlayIs(ctx, "model") && !overlayIs(ctx, "slash"),
-    run: (_input, _ctx, dispatch) => {
-      dispatch({ type: "TOGGLE_OVERLAY", panel: "metrics" });
+      dispatch({ type: "TOGGLE_OVERLAY", panel: "session" });
       return true;
     },
   },

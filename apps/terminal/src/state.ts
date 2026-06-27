@@ -42,7 +42,7 @@ export interface Metrics {
   sessionStatus: string;
 }
 
-export type OverlayPanel = "none" | "slash" | "trace" | "metrics" | "model";
+export type OverlayPanel = "none" | "slash" | "session" | "model";
 
 export interface QueuedMessage {
   id: string;

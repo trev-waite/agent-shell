@@ -21,7 +21,7 @@ function ctx(overrides: Partial<typeof initialState> = {}): KeyContext {
 }
 
 describe("handleKey overlays", () => {
-  test("Esc closes metrics overlay before exiting", () => {
+  test("Esc closes session overlay before exiting", () => {
     const actions: string[] = [];
     const dispatch = (action: { type: string }) => {
       actions.push(action.type);
@@ -30,7 +30,7 @@ describe("handleKey overlays", () => {
     const result = handleKey(
       "",
       { escape: true } as never,
-      ctx({ activeOverlay: "metrics" }),
+      ctx({ activeOverlay: "session" }),
       dispatch,
     );
 
@@ -38,36 +38,43 @@ describe("handleKey overlays", () => {
     expect(actions).toEqual(["CLOSE_OVERLAY"]);
   });
 
-  test("Enter with metrics open and input submits", () => {
+  test("Enter with session open and input submits", () => {
     const result = handleKey(
       "",
       { return: true } as never,
-      ctx({ activeOverlay: "metrics", input: "hello" }),
+      ctx({ activeOverlay: "session", input: "hello" }),
       () => {},
     );
 
     expect(result).toBe("submit");
   });
 
-  test("typing keeps metrics overlay open and updates input", () => {
+  test("typing keeps session overlay open and updates input", () => {
     const actions: Array<{ type: string; input?: string }> = [];
     const dispatch = (action: { type: string; input?: string }) => {
       actions.push(action);
     };
 
-    handleKey("h", {} as never, ctx({ activeOverlay: "metrics", input: "" }), dispatch);
+    handleKey("h", {} as never, ctx({ activeOverlay: "session", input: "" }), dispatch);
 
     expect(actions).toEqual([{ type: "SET_INPUT", input: "h" }]);
   });
 
-  test("slash palette Enter is handled without submit", () => {
+  test("slash palette Enter runs full slash input", () => {
+    const actions: Array<{ type: string; message?: string }> = [];
+    const dispatch = (action: { type: string; message?: string }) => {
+      actions.push(action);
+    };
+
     const result = handleKey(
       "",
       { return: true } as never,
-      ctx({ activeOverlay: "slash", input: "/help" }),
-      () => {},
+      ctx({ activeOverlay: "slash", input: "/theme dark", slashMenuIndex: 0 }),
+      dispatch,
     );
 
     expect(result).toBe("handled");
+    expect(actions.some((a) => a.type === "SET_COLOR_SCHEME")).toBe(true);
+    expect(actions.some((a) => a.type === "SET_COMMAND_NOTICE")).toBe(true);
   });
 });

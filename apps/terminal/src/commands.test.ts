@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseSlashCommand, isSlashCommand } from "./commands.js";
+import { parseSlashCommand, isSlashCommand, resolveSlashInput, runSlashCommand } from "./commands.js";
 
 describe("slash commands", () => {
   test("isSlashCommand detects slash prefix", () => {
@@ -12,28 +12,31 @@ describe("slash commands", () => {
     expect(result?.actions).toEqual([{ type: "OPEN_OVERLAY", panel: "model" }]);
   });
 
-  test("/trace and /metrics open overlays", () => {
+  test("/session opens combined panel", () => {
+    expect(parseSlashCommand("/session")?.actions).toEqual([
+      { type: "OPEN_OVERLAY", panel: "session" },
+    ]);
+  });
+
+  test("/trace and /metrics alias session panel", () => {
     expect(parseSlashCommand("/trace")?.actions).toEqual([
-      { type: "OPEN_OVERLAY", panel: "trace" },
+      { type: "OPEN_OVERLAY", panel: "session" },
     ]);
     expect(parseSlashCommand("/metrics")?.actions).toEqual([
-      { type: "OPEN_OVERLAY", panel: "metrics" },
+      { type: "OPEN_OVERLAY", panel: "session" },
     ]);
   });
 
   test("/theme dark sets preference", () => {
     const result = parseSlashCommand("/theme dark");
     expect(result?.actions).toEqual([{ type: "SET_COLOR_SCHEME", preference: "dark" }]);
+    expect(result?.message).toContain("dark");
   });
 
   test("/theme cycles when no arg", () => {
     const result = parseSlashCommand("/theme");
     expect(result?.actions).toEqual([{ type: "CYCLE_COLOR_SCHEME" }]);
-  });
-
-  test("/expand and /collapse dispatch trace actions", () => {
-    expect(parseSlashCommand("/expand")?.actions[0]?.type).toBe("EXPAND_TRACE_FOCUS");
-    expect(parseSlashCommand("/collapse")?.actions[0]?.type).toBe("COLLAPSE_TRACE_FOCUS");
+    expect(result?.message).toBeDefined();
   });
 
   test("/help returns help text", () => {
@@ -51,5 +54,17 @@ describe("slash commands", () => {
   test("unknown command returns error message", () => {
     const result = parseSlashCommand("/foobar");
     expect(result?.message).toContain("Unknown command");
+  });
+
+  test("resolveSlashInput uses palette selection for partial names", () => {
+    expect(resolveSlashInput("/h", 0)).toBe("/help");
+    expect(resolveSlashInput("/theme dark", 0)).toBe("/theme dark");
+  });
+
+  test("runSlashCommand resolves partial palette input", () => {
+    const actions: Array<{ type: string }> = [];
+    runSlashCommand("/h", (a) => actions.push(a), { menuIndex: 0 });
+    expect(actions.some((a) => a.type === "SET_COMMAND_NOTICE")).toBe(true);
+    expect(actions.some((a) => a.type === "OPEN_OVERLAY")).toBe(false);
   });
 });

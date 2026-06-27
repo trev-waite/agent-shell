@@ -114,18 +114,18 @@ describe("uiReducer UI actions", () => {
   });
 
   test("OPEN_OVERLAY and CLOSE_OVERLAY", () => {
-    const opened = uiReducer(initialState, { type: "OPEN_OVERLAY", panel: "trace" });
-    expect(opened.activeOverlay).toBe("trace");
+    const opened = uiReducer(initialState, { type: "OPEN_OVERLAY", panel: "session" });
+    expect(opened.activeOverlay).toBe("session");
 
     const closed = uiReducer(opened, { type: "CLOSE_OVERLAY" });
     expect(closed.activeOverlay).toBe("none");
   });
 
-  test("TOGGLE_OVERLAY switches trace panel", () => {
-    const opened = uiReducer(initialState, { type: "TOGGLE_OVERLAY", panel: "trace" });
-    expect(opened.activeOverlay).toBe("trace");
+  test("TOGGLE_OVERLAY switches session panel", () => {
+    const opened = uiReducer(initialState, { type: "TOGGLE_OVERLAY", panel: "session" });
+    expect(opened.activeOverlay).toBe("session");
 
-    const closed = uiReducer(opened, { type: "TOGGLE_OVERLAY", panel: "trace" });
+    const closed = uiReducer(opened, { type: "TOGGLE_OVERLAY", panel: "session" });
     expect(closed.activeOverlay).toBe("none");
   });
 
@@ -280,7 +280,7 @@ describe("projections", () => {
       true,
     );
     expect(status.label).toBe("RUNNING");
-    expect(status.colorKey).toBe("motion");
+    expect(status.dotVariant).toBe("active");
   });
 
   test("buildMetricsGrid condenses for compact layout", () => {

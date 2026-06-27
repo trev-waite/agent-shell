@@ -1,0 +1,96 @@
+import { Box, Text } from "ink";
+import type { ActivityStatus, ChatMessage, ToolTrace } from "../state.js";
+import {
+  displayMessageContent,
+  gapBeforeMessage,
+  showInlineTraceForMessage,
+  type ChatViewport,
+} from "../projections/chatViewport.js";
+import type { LayoutConfig } from "../theme.js";
+import { formatTimestamp } from "../utils/format.js";
+import { FormattedMessage } from "./FormattedMessage.js";
+import { InlineTraceFeed } from "./InlineTraceFeed.js";
+import { useSpinnerFrame } from "./ui/Spinner.js";
+import { useTheme } from "../hooks/ThemeContext.js";
+
+interface ChatMessageItemProps {
+  msg: ChatMessage;
+  index: number;
+  visibleIndex: number;
+  messages: ChatMessage[];
+  viewport: ChatViewport;
+  traces: ToolTrace[];
+  activity: ActivityStatus | null;
+  showActivity: boolean;
+  lastUserIndex: number;
+  layout: LayoutConfig;
+}
+
+export function ChatMessageItem({
+  msg,
+  index,
+  visibleIndex,
+  messages,
+  viewport,
+  traces,
+  activity,
+  showActivity,
+  lastUserIndex,
+  layout,
+}: ChatMessageItemProps) {
+  const theme = useTheme();
+  const spinner = useSpinnerFrame();
+  const inlineTrace = showInlineTraceForMessage(
+    messages,
+    index,
+    lastUserIndex,
+    traces,
+    activity,
+    showActivity,
+  );
+  const truncateRows =
+    visibleIndex === 0 ? viewport.truncateFirstMessageRows : null;
+  const content = displayMessageContent(msg, layout.columns, truncateRows);
+
+  return (
+    <Box
+      flexDirection="column"
+      marginTop={visibleIndex === 0 ? 0 : gapBeforeMessage(messages, index)}
+    >
+      {msg.role === "user" ? (
+        <Box flexDirection="column">
+          <Box flexDirection="row">
+            <Text color={theme.motion}>❯ </Text>
+            <Text color={theme.user} wrap="wrap">
+              {content}
+            </Text>
+          </Box>
+          <Box justifyContent="flex-end">
+            <Text dimColor>{formatTimestamp(msg.timestamp)}</Text>
+          </Box>
+        </Box>
+      ) : (
+        <>
+          {msg.role === "error" ? (
+            <Text color={theme.error} bold>
+              ERROR
+            </Text>
+          ) : null}
+          {msg.streaming ? <Text color={theme.motion}>{spinner} </Text> : null}
+          <FormattedMessage
+            content={content}
+            color={msg.role === "error" ? theme.error : theme.text}
+          />
+        </>
+      )}
+
+      {inlineTrace ? (
+        <InlineTraceFeed
+          traces={traces}
+          afterTimestamp={msg.timestamp}
+          activity={showActivity ? activity : null}
+        />
+      ) : null}
+    </Box>
+  );
+}

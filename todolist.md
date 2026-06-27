@@ -8,6 +8,10 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 ## High priority
 
+- [ ] **Optimize React loop** — Caching and other improvements to reduce unnecessary re-renders and tighten the Ink terminal hot path.
+
+- [ ] **Upgrade to AI SDK v7** — Bump `@ai-sdk/*` and related provider packages; reconcile breaking API changes across runtime and server.
+
 - [ ] **Headless runtime entrypoint** — Thin CLI (e.g. `relay exec --prompt "..."`) that runs `@relay/runtime` directly without HTTP. Proves the runtime is independent of transport; useful for scripts and CI.
 
 - [ ] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite transaction per N tokens or per assistant message). Fanout stays per-token; only persistence batches.
