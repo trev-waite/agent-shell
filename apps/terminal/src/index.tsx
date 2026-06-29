@@ -312,7 +312,7 @@ function TerminalApp() {
       dispatchAction,
     );
     if (result === "submit") {
-      handleInputSubmit(current, dispatchAction, subscribeToSession, {
+      handleInputSubmit(current, dispatch, subscribeToSession, {
         submitPending: submitPendingRef.current,
         setSubmitPending: (pending) => {
           submitPendingRef.current = pending;
