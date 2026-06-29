@@ -1,6 +1,6 @@
 # Relay Mac
 
-> **Work in progress — not production-ready.** This Mac client is an early attempt. It connects to the local Relay server (sessions load, health checks pass), but **the chat transcript does not reliably display messages yet**. Expect rough edges; do not merge to main until the message UI is fixed.
+> **Work in progress — not production-ready.** This Mac client is an early scaffold on `main`. It connects to the local Relay server (sessions load, health checks pass), but **the chat transcript does not reliably display messages yet**. Expect rough edges; active development continues here.
 
 Native Swift macOS 26 client for Relay. Consumes the existing HTTP+SSE API — no changes to server, runtime, SDK, or terminal.
 
