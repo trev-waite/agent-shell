@@ -1,10 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import type { ChatMessage } from "./state.js";
+import { initialChatScroll } from "./state.js";
 import {
+  buildContentLedger,
+  buildChatViewModel,
+  clampScrollOffset,
   computeChatMaxRows,
   computeChromeRows,
+  computeScrollbarMetrics,
+  computeScrollTop,
   estimateContentRows,
   selectChatViewport,
+  selectChatViewportFromScrollTop,
+  truncateContentFromBottom,
   truncateContentFromTop,
   wrapLineCount,
 } from "./projections/chatViewport.js";
@@ -70,5 +78,81 @@ describe("chatViewport", () => {
     const truncated = truncateContentFromTop("line one\nline two\nline three", 10, 2);
     expect(truncated).toContain("line three");
     expect(truncated.startsWith("…")).toBe(true);
+  });
+
+  test("truncateContentFromBottom keeps the head of long content", () => {
+    const truncated = truncateContentFromBottom("line one\nline two\nline three", 10, 2);
+    expect(truncated).toContain("line one");
+    expect(truncated.endsWith("…")).toBe(true);
+  });
+
+  test("followTail scrollTop pins to bottom", () => {
+    const messages: ChatMessage[] = [
+      msg({ id: "1", role: "user", content: "a".repeat(500), timestamp: 1 }),
+      msg({ id: "2", role: "assistant", content: "b".repeat(500), timestamp: 2 }),
+    ];
+    const ledger = buildContentLedger(messages, layout.columns, [], null, layout);
+    const maxRows = 10;
+    const scrollTop = computeScrollTop(ledger.totalRows, maxRows, initialChatScroll);
+    expect(scrollTop).toBe(Math.max(0, ledger.totalRows - maxRows));
+  });
+
+  test("scrolling up reveals earlier messages", () => {
+    const messages: ChatMessage[] = [
+      msg({ id: "1", role: "user", content: "first", timestamp: 1 }),
+      msg({ id: "2", role: "assistant", content: "y".repeat(800), timestamp: 2 }),
+      msg({ id: "3", role: "user", content: "last", timestamp: 3 }),
+    ];
+    const maxRows = 8;
+    const tailView = buildChatViewModel(messages, [], null, layout, maxRows, initialChatScroll);
+    const scrolledView = buildChatViewModel(messages, [], null, layout, maxRows, {
+      followTail: false,
+      offsetFromBottom: tailView.maxScrollOffset,
+    });
+    expect(scrolledView.viewport.startIndex).toBeLessThan(tailView.viewport.startIndex);
+    expect(scrolledView.viewport.hiddenMessageCount).toBe(0);
+  });
+
+  test("clampScrollOffset stays within bounds", () => {
+    expect(clampScrollOffset(50, 20)).toBe(20);
+    expect(clampScrollOffset(-5, 20)).toBe(0);
+  });
+
+  test("computeScrollbarMetrics hides when content fits", () => {
+    const metrics = computeScrollbarMetrics(5, 10, 0);
+    expect(metrics.visible).toBe(false);
+  });
+
+  test("computeScrollbarMetrics positions thumb on overflow", () => {
+    const metrics = computeScrollbarMetrics(100, 10, 45);
+    expect(metrics.visible).toBe(true);
+    expect(metrics.thumbHeight).toBeGreaterThanOrEqual(1);
+    expect(metrics.thumbTop).toBeGreaterThanOrEqual(0);
+    expect(metrics.thumbTop + metrics.thumbHeight).toBeLessThanOrEqual(10);
+  });
+
+  test("selectChatViewportFromScrollTop truncates at top and bottom", () => {
+    const messages: ChatMessage[] = [
+      msg({ id: "1", role: "user", content: "one", timestamp: 1 }),
+      msg({ id: "2", role: "assistant", content: "z".repeat(1200), timestamp: 2 }),
+      msg({ id: "3", role: "user", content: "three", timestamp: 3 }),
+    ];
+    const ledger = buildContentLedger(messages, layout.columns, [], null, layout);
+    const maxRows = 6;
+    const scrollTop = 3;
+    const viewport = selectChatViewportFromScrollTop(
+      messages,
+      ledger,
+      scrollTop,
+      maxRows,
+      layout.columns,
+      [],
+      null,
+      layout,
+      2,
+      false,
+    );
+    expect(viewport.startIndex).toBeGreaterThanOrEqual(0);
+    expect(viewport.endIndex).toBeGreaterThanOrEqual(viewport.startIndex);
   });
 });

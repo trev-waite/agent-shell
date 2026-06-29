@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import { useTheme } from "../hooks/ThemeContext.js";
 import { deriveFooterStatus } from "../projections/footer.js";
-import { computeChatMaxRows, type ChatChromeOptions } from "../projections/chatViewport.js";
+import { computeChatMaxRows, deriveScrollContext, type ChatChromeOptions } from "../projections/chatViewport.js";
 import { EDGE_PADDING, type LayoutConfig } from "../theme.js";
 import type { UIState } from "../state.js";
 import { ChatPanel } from "./ChatPanel.js";
@@ -30,6 +30,15 @@ export function AppShell({ state, layout }: AppShellProps) {
     queueCount: state.messageQueue.length,
     hasOverlay: state.activeOverlay !== "none",
   };
+  const chatMaxRows = computeChatMaxRows(layout, chatChrome);
+  const scrollContext = deriveScrollContext(
+    state.messages,
+    state.traces,
+    state.activity,
+    layout,
+    chatMaxRows,
+    state.showScrollbar,
+  );
 
   return (
     <Box
@@ -61,7 +70,9 @@ export function AppShell({ state, layout }: AppShellProps) {
         traces={state.traces}
         activity={state.activity}
         layout={layout}
-        maxRows={computeChatMaxRows(layout, chatChrome)}
+        maxRows={chatMaxRows}
+        chatScroll={state.chatScroll}
+        showScrollbar={state.showScrollbar}
       />
 
       <Box flexDirection="column" flexShrink={0} width={layout.columns}>
@@ -75,7 +86,15 @@ export function AppShell({ state, layout }: AppShellProps) {
           notice={state.commandNotice}
         />
         <Box marginTop={1}>
-          <Footer status={footerStatus} width={layout.columns} />
+          <Footer
+            status={footerStatus}
+            width={layout.columns}
+            chatScroll={state.chatScroll}
+            hasScrollableHistory={
+              state.messages.length > 0 && scrollContext.maxScrollOffset > 0
+            }
+            layoutMode={layout.mode}
+          />
         </Box>
       </Box>
     </Box>

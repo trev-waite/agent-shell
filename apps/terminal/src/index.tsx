@@ -9,6 +9,11 @@ import { ThemeProvider } from "./hooks/ThemeContext.js";
 import { useLayoutMode } from "./hooks/useLayoutMode.js";
 import { handleKey } from "./keyboard.js";
 import {
+  computeChatMaxRows,
+  deriveScrollContext,
+  type ChatChromeOptions,
+} from "./projections/chatViewport.js";
+import {
   runSlashCommand,
   isSlashCommand,
 } from "./commands.js";
@@ -20,6 +25,7 @@ import {
   type UIState,
 } from "./state.js";
 import { isSessionBusy } from "./stateHelpers.js";
+import { disableTerminalFlowControl } from "./utils/tty.js";
 
 const client = createClient();
 
@@ -45,6 +51,15 @@ function cancelServerSession(sessionId: string | null): void {
   void client.cancel(sessionId).catch(() => {
     // Session may already be idle or the server may be offline.
   });
+}
+
+function chatChromeFrom(state: UIState): ChatChromeOptions {
+  return {
+    serverOffline: state.serverOnline === false,
+    notice: state.commandNotice,
+    queueCount: state.messageQueue.length,
+    hasOverlay: state.activeOverlay !== "none",
+  };
 }
 
 function submitPrompt(
@@ -252,14 +267,39 @@ function TerminalApp() {
     return () => clearTimeout(timeout);
   }, [state.commandNotice]);
 
+  const chatChrome = chatChromeFrom(state);
+  const maxRows = computeChatMaxRows(layout, chatChrome);
+  const scrollContext = deriveScrollContext(
+    state.messages,
+    state.traces,
+    state.activity,
+    layout,
+    maxRows,
+    state.showScrollbar,
+  );
+
+  useEffect(() => {
+    dispatch({ type: "CLAMP_SCROLL", maxOffset: scrollContext.maxScrollOffset });
+  }, [scrollContext.maxScrollOffset]);
+
   useInput((input, key) => {
     const current = stateRef.current;
+    const rows = computeChatMaxRows(layout, chatChromeFrom(current));
+    const scroll = deriveScrollContext(
+      current.messages,
+      current.traces,
+      current.activity,
+      layout,
+      rows,
+      current.showScrollbar,
+    );
     const result = handleKey(
       input,
       key,
       {
         state: current,
         layout,
+        scroll,
         exit,
         onNewSession: () => {
           endSessionStream();
@@ -288,4 +328,5 @@ function TerminalApp() {
   );
 }
 
+disableTerminalFlowControl();
 render(<TerminalApp />, { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr });

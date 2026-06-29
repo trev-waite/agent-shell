@@ -24,6 +24,7 @@ interface ChatMessageItemProps {
   showActivity: boolean;
   lastUserIndex: number;
   layout: LayoutConfig;
+  isLastVisible: boolean;
 }
 
 export function ChatMessageItem({
@@ -37,6 +38,7 @@ export function ChatMessageItem({
   showActivity,
   lastUserIndex,
   layout,
+  isLastVisible,
 }: ChatMessageItemProps) {
   const theme = useTheme();
   const spinner = useSpinnerFrame();
@@ -48,9 +50,16 @@ export function ChatMessageItem({
     activity,
     showActivity,
   );
-  const truncateRows =
+  const truncateTopRows =
     visibleIndex === 0 ? viewport.truncateFirstMessageRows : null;
-  const content = displayMessageContent(msg, layout.columns, truncateRows);
+  const truncateBottomRows =
+    isLastVisible ? viewport.truncateLastMessageRows : null;
+  const content = displayMessageContent(
+    msg,
+    layout.columns,
+    truncateTopRows,
+    truncateBottomRows,
+  );
 
   return (
     <Box

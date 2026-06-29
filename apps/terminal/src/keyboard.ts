@@ -8,9 +8,15 @@ import {
 } from "./commands.js";
 import { isPanelOverlay } from "./stateHelpers.js";
 
+export interface ScrollContext {
+  maxRows: number;
+  maxScrollOffset: number;
+}
+
 export interface KeyContext {
   state: UIState;
   layout: LayoutConfig;
+  scroll: ScrollContext;
   exit: () => void;
   onNewSession?: () => void;
 }
@@ -32,6 +38,32 @@ function overlayClosed(ctx: KeyContext): boolean {
   return ctx.state.activeOverlay === "none";
 }
 
+/** Line scroll with bare arrows — only when the prompt is empty. */
+function canArrowScroll(ctx: KeyContext): boolean {
+  return overlayClosed(ctx) && ctx.state.input.length === 0;
+}
+
+type KeyWithAlt = Key & { alt?: boolean };
+
+function hasAlt(key: Key): boolean {
+  return Boolean((key as KeyWithAlt).alt);
+}
+
+function bareArrow(key: Key, direction: "up" | "down"): boolean {
+  const arrow = direction === "up" ? key.upArrow : key.downArrow;
+  return (
+    arrow &&
+    !key.ctrl &&
+    !key.meta &&
+    !key.shift &&
+    !hasAlt(key)
+  );
+}
+
+function noMod(key: Key): boolean {
+  return !key.ctrl && !key.meta;
+}
+
 function canType(ctx: KeyContext): boolean {
   return ctx.state.activeOverlay !== "model";
 }
@@ -42,17 +74,25 @@ function canSubmit(ctx: KeyContext): boolean {
   return overlayClosed(ctx) || isPanelOverlay(ctx.state.activeOverlay);
 }
 
-/** Ctrl on Linux/Windows, ⌘ on Mac — Ink reports both as ctrl or meta depending on terminal. */
-function mod(key: Key): boolean {
-  return key.ctrl || key.meta;
+/** Control (^) reaches the TUI; Command (⌘) is handled by the terminal app or OS. */
+function ctrlKey(input: string, key: Key, letter: string): boolean {
+  return key.ctrl && !key.meta && !key.shift && input === letter;
 }
 
-function modKey(input: string, key: Key, letter: string): boolean {
-  return mod(key) && !key.shift && input === letter;
+function dispatchScroll(
+  dispatch: Dispatch<UIAction>,
+  ctx: KeyContext,
+  delta: number,
+): void {
+  dispatch({
+    type: "SCROLL_BY",
+    delta,
+    maxOffset: ctx.scroll.maxScrollOffset,
+  });
 }
 
-function modShiftKey(input: string, key: Key, letter: string): boolean {
-  return mod(key) && key.shift && input === letter;
+function pageScrollDelta(ctx: KeyContext, direction: -1 | 1): number {
+  return direction * Math.max(1, Math.floor(ctx.scroll.maxRows / 2));
 }
 
 export const KEY_BINDINGS: KeyBinding[] = [
@@ -150,7 +190,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
   },
   {
     id: "trace-expand",
-    match: (input, key) => input === "]" && !mod(key),
+    match: (input, key) => input === "]" && noMod(key),
     when: (ctx) => overlayIs(ctx, "session"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "EXPAND_TRACE_FOCUS" });
@@ -159,10 +199,73 @@ export const KEY_BINDINGS: KeyBinding[] = [
   },
   {
     id: "trace-collapse",
-    match: (input, key) => input === "[" && !mod(key),
+    match: (input, key) => input === "[" && noMod(key),
     when: (ctx) => overlayIs(ctx, "session"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "COLLAPSE_TRACE_FOCUS" });
+      return true;
+    },
+  },
+  {
+    id: "scroll-page-up",
+    match: (input, key) => ctrlKey(input, key, "u"),
+    when: overlayClosed,
+    run: (_input, ctx, dispatch) => {
+      dispatchScroll(dispatch, ctx, pageScrollDelta(ctx, -1));
+      return true;
+    },
+  },
+  {
+    id: "scroll-page-down",
+    match: (input, key) => ctrlKey(input, key, "d"),
+    when: overlayClosed,
+    run: (_input, ctx, dispatch) => {
+      dispatchScroll(dispatch, ctx, pageScrollDelta(ctx, 1));
+      return true;
+    },
+  },
+  {
+    id: "scroll-line-up",
+    match: (_input, key) => bareArrow(key, "up"),
+    when: canArrowScroll,
+    run: (_input, ctx, dispatch) => {
+      dispatchScroll(dispatch, ctx, -1);
+      return true;
+    },
+  },
+  {
+    id: "scroll-line-down",
+    match: (_input, key) => bareArrow(key, "down"),
+    when: canArrowScroll,
+    run: (_input, ctx, dispatch) => {
+      dispatchScroll(dispatch, ctx, 1);
+      return true;
+    },
+  },
+  {
+    id: "scroll-to-top",
+    match: (input, key) => ctrlKey(input, key, "a"),
+    when: overlayClosed,
+    run: (_input, ctx, dispatch) => {
+      dispatch({ type: "SCROLL_TO_TOP", maxOffset: ctx.scroll.maxScrollOffset });
+      return true;
+    },
+  },
+  {
+    id: "scroll-to-bottom",
+    match: (input, key) => ctrlKey(input, key, "e"),
+    when: overlayClosed,
+    run: (_input, _ctx, dispatch) => {
+      dispatch({ type: "SCROLL_TO_BOTTOM" });
+      return true;
+    },
+  },
+  {
+    id: "toggle-scrollbar",
+    match: (input, key) => ctrlKey(input, key, "b"),
+    when: overlayClosed,
+    run: (_input, _ctx, dispatch) => {
+      dispatch({ type: "TOGGLE_SCROLLBAR" });
       return true;
     },
   },
@@ -176,8 +279,8 @@ export const KEY_BINDINGS: KeyBinding[] = [
     },
   },
   {
-    id: "open-model-mod-o",
-    match: (input, key) => modKey(input, key, "o"),
+    id: "open-model-ctrl-o",
+    match: (input, key) => ctrlKey(input, key, "o"),
     when: overlayClosed,
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "OPEN_OVERLAY", panel: "model" });
@@ -215,8 +318,8 @@ export const KEY_BINDINGS: KeyBinding[] = [
     },
   },
   {
-    id: "toggle-session-overlay",
-    match: (input, key) => modShiftKey(input, key, "s"),
+    id: "toggle-session-overlay-ctrl",
+    match: (input, key) => ctrlKey(input, key, "s"),
     when: (ctx) => !overlayIs(ctx, "model") && !overlayIs(ctx, "slash"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "TOGGLE_OVERLAY", panel: "session" });
@@ -224,8 +327,8 @@ export const KEY_BINDINGS: KeyBinding[] = [
     },
   },
   {
-    id: "cycle-theme",
-    match: (input, key) => modShiftKey(input, key, "l"),
+    id: "cycle-theme-ctrl",
+    match: (input, key) => ctrlKey(input, key, "t"),
     when: overlayClosed,
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "CYCLE_COLOR_SCHEME" });

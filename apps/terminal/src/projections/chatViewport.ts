@@ -1,9 +1,8 @@
 import type { ActivityStatus, ChatMessage, ToolTrace } from "../state.js";
+import type { ChatScrollState } from "../state.js";
 import type { LayoutConfig } from "../theme.js";
 import { EDGE_PADDING } from "../theme.js";
-import {
-  truncateToWidth,
-} from "../utils/format.js";
+import { truncateToWidth } from "../utils/format.js";
 import { tracesForTurn } from "./trace.js";
 
 const TURN_GAP_ROWS = 2;
@@ -15,7 +14,6 @@ const FOOTER_MARGIN_ROWS = 1;
 const CHAT_MARGIN_ROWS = 1;
 const NOTICE_ROWS = 2;
 const OVERLAY_ESTIMATE_ROWS = 8;
-const HIDDEN_HISTORY_INDICATOR_ROWS = 1;
 
 export interface ChatChromeOptions {
   serverOffline: boolean;
@@ -26,9 +24,19 @@ export interface ChatChromeOptions {
 
 export interface ChatViewport {
   startIndex: number;
+  endIndex: number;
   hiddenMessageCount: number;
   maxRows: number;
+  scrollTop: number;
+  totalRows: number;
   truncateFirstMessageRows: number | null;
+  truncateLastMessageRows: number | null;
+}
+
+export interface ScrollbarMetrics {
+  visible: boolean;
+  thumbHeight: number;
+  thumbTop: number;
 }
 
 export interface ChatViewModel {
@@ -37,6 +45,20 @@ export interface ChatViewModel {
   lastUserIndex: number;
   showActivity: boolean;
   hasConversation: boolean;
+  scrollbar: ScrollbarMetrics;
+  maxScrollOffset: number;
+}
+
+export interface ContentLedgerBlock {
+  index: number;
+  startRow: number;
+  rowCount: number;
+}
+
+export interface ContentLedger {
+  blocks: ContentLedgerBlock[];
+  tailActivityRows: number;
+  totalRows: number;
 }
 
 export function gapBeforeMessage(messages: ChatMessage[], index: number): number {
@@ -76,19 +98,141 @@ export function messageContentWidth(role: ChatMessage["role"], columns: number):
   return Math.max(1, columns - padding);
 }
 
+export function clampScrollOffset(offsetFromBottom: number, maxScrollOffset: number): number {
+  return Math.max(0, Math.min(maxScrollOffset, offsetFromBottom));
+}
+
+export function computeScrollTop(
+  totalRows: number,
+  maxRows: number,
+  scroll: ChatScrollState,
+): number {
+  const maxScrollOffset = Math.max(0, totalRows - maxRows);
+  if (scroll.followTail) {
+    return maxScrollOffset;
+  }
+  const offset = clampScrollOffset(scroll.offsetFromBottom, maxScrollOffset);
+  return Math.max(0, maxScrollOffset - offset);
+}
+
+export function computeScrollbarMetrics(
+  totalRows: number,
+  maxRows: number,
+  scrollTop: number,
+): ScrollbarMetrics {
+  const overflow = totalRows - maxRows;
+  if (overflow <= 0) {
+    return { visible: false, thumbHeight: maxRows, thumbTop: 0 };
+  }
+
+  const thumbHeight = Math.max(1, Math.round((maxRows * maxRows) / totalRows));
+  const trackRange = maxRows - thumbHeight;
+  const scrollRange = overflow;
+  const thumbTop =
+    scrollRange > 0 ? Math.round((scrollTop / scrollRange) * trackRange) : 0;
+
+  return { visible: true, thumbHeight, thumbTop };
+}
+
+export function buildContentLedger(
+  messages: ChatMessage[],
+  columns: number,
+  traces: ToolTrace[],
+  activity: ActivityStatus | null,
+  layout: LayoutConfig,
+  lastUserIndex = lastUserMessageIndex(messages),
+  showActivity = shouldShowActivity(messages, activity),
+): ContentLedger {
+  const blocks: ContentLedgerBlock[] = [];
+  let cursor = 0;
+
+  for (let i = 0; i < messages.length; i++) {
+    const rowCount = estimateMessageBlockRows(messages, i, columns, traces, activity, layout, {
+      lastUserIndex,
+      showActivity,
+      includeGap: i > 0,
+    });
+    blocks.push({ index: i, startRow: cursor, rowCount });
+    cursor += rowCount;
+  }
+
+  let tailActivityRows = 0;
+  if (showActivity && lastUserIndex < 0 && activity !== null) {
+    tailActivityRows = estimateTraceFeedRows(traces, 0, activity);
+    cursor += tailActivityRows;
+  }
+
+  return { blocks, tailActivityRows, totalRows: cursor };
+}
+
+export function computeMaxScrollOffset(
+  messages: ChatMessage[],
+  traces: ToolTrace[],
+  activity: ActivityStatus | null,
+  layout: LayoutConfig,
+  maxRows: number,
+  contentColumns = layout.columns,
+): number {
+  const ledger = buildContentLedger(
+    messages,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+  );
+  return Math.max(0, ledger.totalRows - maxRows);
+}
+
+export function deriveScrollContext(
+  messages: ChatMessage[],
+  traces: ToolTrace[],
+  activity: ActivityStatus | null,
+  layout: LayoutConfig,
+  maxRows: number,
+  showScrollbar: boolean,
+): { maxRows: number; maxScrollOffset: number } {
+  const contentColumns = showScrollbar ? layout.columns - 1 : layout.columns;
+  return {
+    maxRows,
+    maxScrollOffset: computeMaxScrollOffset(
+      messages,
+      traces,
+      activity,
+      layout,
+      maxRows,
+      contentColumns,
+    ),
+  };
+}
+
 export function buildChatViewModel(
   messages: ChatMessage[],
   traces: ToolTrace[],
   activity: ActivityStatus | null,
   layout: LayoutConfig,
   maxRows: number,
+  scroll: ChatScrollState,
+  contentColumns = layout.columns,
 ): ChatViewModel {
   const lastUserIndex = lastUserMessageIndex(messages);
   const showActivity = shouldShowActivity(messages, activity);
-  const viewport = selectChatViewport(
+  const ledger = buildContentLedger(
     messages,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  const maxScrollOffset = Math.max(0, ledger.totalRows - maxRows);
+  const scrollTop = computeScrollTop(ledger.totalRows, maxRows, scroll);
+  const viewport = selectChatViewportFromScrollTop(
+    messages,
+    ledger,
+    scrollTop,
     maxRows,
-    layout.columns,
+    contentColumns,
     traces,
     activity,
     layout,
@@ -96,26 +240,35 @@ export function buildChatViewModel(
     showActivity,
   );
 
+  const visibleMessages = messages.slice(viewport.startIndex, viewport.endIndex + 1);
+
   return {
     viewport,
-    visibleMessages: messages.slice(viewport.startIndex),
+    visibleMessages,
     lastUserIndex,
     showActivity,
     hasConversation: messages.length > 0 || showActivity,
+    scrollbar: computeScrollbarMetrics(ledger.totalRows, maxRows, scrollTop),
+    maxScrollOffset,
   };
 }
 
 export function displayMessageContent(
   msg: ChatMessage,
   columns: number,
-  truncateRows: number | null,
+  truncateTopRows: number | null,
+  truncateBottomRows: number | null = null,
 ): string {
-  if (truncateRows === null) return msg.content;
-  return truncateContentFromTop(
-    msg.content,
-    messageContentWidth(msg.role, columns),
-    truncateRows,
-  );
+  let content = msg.content;
+
+  if (truncateTopRows !== null) {
+    content = truncateContentFromTop(content, messageContentWidth(msg.role, columns), truncateTopRows);
+  }
+  if (truncateBottomRows !== null) {
+    content = truncateContentFromBottom(content, messageContentWidth(msg.role, columns), truncateBottomRows);
+  }
+
+  return content;
 }
 
 export function showInlineTraceForMessage(
@@ -146,6 +299,7 @@ export function estimateContentRows(content: string, width: number): number {
   return content.split("\n").reduce((sum, line) => sum + wrapLineCount(line, width), 0);
 }
 
+/** @deprecated Use selectChatViewportFromScrollTop via buildChatViewModel */
 export function selectChatViewport(
   messages: ChatMessage[],
   maxRows: number,
@@ -156,50 +310,82 @@ export function selectChatViewport(
   lastUserIndex = lastUserMessageIndex(messages),
   showActivity = shouldShowActivity(messages, activity),
 ): ChatViewport {
+  const ledger = buildContentLedger(
+    messages,
+    columns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  const scrollTop = computeScrollTop(ledger.totalRows, maxRows, {
+    followTail: true,
+    offsetFromBottom: 0,
+  });
+  return selectChatViewportFromScrollTop(
+    messages,
+    ledger,
+    scrollTop,
+    maxRows,
+    columns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+}
+
+export function selectChatViewportFromScrollTop(
+  messages: ChatMessage[],
+  ledger: ContentLedger,
+  scrollTop: number,
+  maxRows: number,
+  columns: number,
+  traces: ToolTrace[],
+  activity: ActivityStatus | null,
+  layout: LayoutConfig,
+  lastUserIndex: number,
+  showActivity: boolean,
+): ChatViewport {
+  const viewportBottom = scrollTop + maxRows;
+
   if (messages.length === 0) {
-    return { startIndex: 0, hiddenMessageCount: 0, maxRows, truncateFirstMessageRows: null };
+    return {
+      startIndex: 0,
+      endIndex: -1,
+      hiddenMessageCount: 0,
+      maxRows,
+      scrollTop,
+      totalRows: ledger.totalRows,
+      truncateFirstMessageRows: null,
+      truncateLastMessageRows: null,
+    };
   }
 
-  let tailRows = 0;
-  if (showActivity && lastUserIndex < 0 && activity !== null) {
-    tailRows += estimateTraceFeedRows(traces, 0, activity);
-  }
-
-  let usedRows = tailRows;
   let startIndex = messages.length;
+  let endIndex = -1;
 
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msgRows = estimateMessageBlockRows(messages, i, columns, traces, activity, layout, {
-      lastUserIndex,
-      showActivity,
-      includeGap: true,
-    });
+  for (const block of ledger.blocks) {
+    const blockEnd = block.startRow + block.rowCount;
+    if (blockEnd <= scrollTop) continue;
+    if (block.startRow >= viewportBottom) break;
+    if (startIndex === messages.length) startIndex = block.index;
+    endIndex = block.index;
+  }
 
-    const indicatorRows = startIndex < messages.length ? HIDDEN_HISTORY_INDICATOR_ROWS : 0;
-    if (usedRows + msgRows + indicatorRows > maxRows && startIndex < messages.length) {
-      break;
-    }
-
-    usedRows += msgRows;
-    startIndex = i;
+  if (startIndex === messages.length) {
+    startIndex = Math.max(0, messages.length - 1);
+    endIndex = messages.length - 1;
   }
 
   const hiddenMessageCount = startIndex;
-  let budget =
-    maxRows -
-    (hiddenMessageCount > 0 ? HIDDEN_HISTORY_INDICATOR_ROWS : 0) -
-    tailRows;
-
-  for (let i = startIndex; i < messages.length; i++) {
-    budget -= estimateMessageBlockRows(messages, i, columns, traces, activity, layout, {
-      lastUserIndex,
-      showActivity,
-      includeGap: i !== startIndex,
-    });
-  }
 
   let truncateFirstMessageRows: number | null = null;
-  if (budget < 0 && messages[startIndex]) {
+  const firstBlock = ledger.blocks.find((b) => b.index === startIndex);
+  if (firstBlock && firstBlock.startRow < scrollTop) {
+    const hiddenRows = scrollTop - firstBlock.startRow;
     const fullRows = estimateMessageBlockRows(
       messages,
       startIndex,
@@ -207,16 +393,32 @@ export function selectChatViewport(
       traces,
       activity,
       layout,
-      { lastUserIndex, showActivity, includeGap: false, omitInlineTrace: true },
+      { lastUserIndex, showActivity, includeGap: startIndex > 0, omitInlineTrace: true },
     );
-    truncateFirstMessageRows = Math.max(1, fullRows + budget);
+    truncateFirstMessageRows = Math.max(1, fullRows - hiddenRows);
+  }
+
+  let truncateLastMessageRows: number | null = null;
+  if (endIndex >= 0) {
+    const lastBlock = ledger.blocks.find((b) => b.index === endIndex);
+    if (lastBlock) {
+      const blockEnd = lastBlock.startRow + lastBlock.rowCount;
+      if (blockEnd > viewportBottom) {
+        const visibleRows = viewportBottom - Math.max(lastBlock.startRow, scrollTop);
+        truncateLastMessageRows = Math.max(1, visibleRows);
+      }
+    }
   }
 
   return {
     startIndex,
+    endIndex,
     hiddenMessageCount,
     maxRows,
+    scrollTop,
+    totalRows: ledger.totalRows,
     truncateFirstMessageRows,
+    truncateLastMessageRows,
   };
 }
 
@@ -250,6 +452,41 @@ export function truncateContentFromTop(
 
   if (kept.length < lines.length && !kept[0]?.startsWith("…")) {
     kept[0] = `…${kept[0] ?? ""}`;
+  }
+
+  return kept.join("\n");
+}
+
+export function truncateContentFromBottom(
+  content: string,
+  width: number,
+  maxRows: number,
+): string {
+  const lines = content.split("\n");
+  const kept: string[] = [];
+  let used = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    const lineRows = wrapLineCount(line, width);
+    if (used + lineRows > maxRows) {
+      const remaining = maxRows - used;
+      if (remaining > 0) {
+        const chars = remaining * width;
+        kept.push(`${line.slice(0, Math.max(0, chars - 1))}…`);
+      }
+      break;
+    }
+    used += lineRows;
+    kept.push(line);
+  }
+
+  if (kept.length === 0) {
+    return truncateToWidth(content, width * maxRows);
+  }
+
+  if (kept.length < lines.length && !kept[kept.length - 1]?.endsWith("…")) {
+    kept[kept.length - 1] = `${kept[kept.length - 1] ?? ""}…`;
   }
 
   return kept.join("\n");

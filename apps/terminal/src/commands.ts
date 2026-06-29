@@ -1,6 +1,7 @@
 import type { Dispatch } from "react";
 import type { ColorSchemePreference } from "./theme.js";
 import type { UIAction } from "./state.js";
+import { fullHelp } from "./shortcuts.js";
 
 export interface SlashCommandDef {
   name: string;
@@ -129,7 +130,7 @@ export function parseSlashCommand(input: string): SlashCommandResult | null {
       return parseThemeArg(arg) ?? { actions: [], message: "Usage: /theme [auto|dark|light]" };
     }
     if (name === "help") {
-      return { actions: [], message: slashCommandsHelp() };
+      return { actions: [], message: fullHelp(slashCommandsHelp()) };
     }
     return {
       actions: def.actions,

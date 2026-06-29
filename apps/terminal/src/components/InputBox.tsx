@@ -53,7 +53,7 @@ export function InputBox({
             <>
               <Text dimColor>{modelName}</Text>
               <Text dimColor> · </Text>
-              <Text color={tabActive ? theme.motion : theme.muted}>Tab</Text>
+              <Text color={tabActive ? theme.motion : theme.muted}>Tab · Ctrl+O</Text>
             </>
           )}
         </Box>
