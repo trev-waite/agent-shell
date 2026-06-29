@@ -1,4 +1,4 @@
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createGoogle } from "@ai-sdk/google";
 import { generateText, embed, streamText, tool } from "ai";
 import { z } from "zod";
 import { DEFAULT_GEMINI_MODEL } from "@relay/types";
@@ -9,29 +9,34 @@ import type {
   CompleteOptions,
   StreamResult,
   ToolDefinition,
+  ReasoningLevel,
 } from "./types.js";
 
 const DEFAULT_MODEL = DEFAULT_GEMINI_MODEL;
 const EMBED_MODEL = "text-embedding-004";
 
+const toolsCache = new Map<string, NonNullable<ReturnType<typeof buildTools>>>();
+
 export interface GeminiProviderOptions {
   apiKey: string;
   model?: string;
+  reasoning?: ReasoningLevel;
 }
 
 export function createGeminiProvider(opts: GeminiProviderOptions): LLMProvider {
-  const google = createGoogleGenerativeAI({ apiKey: opts.apiKey });
+  const google = createGoogle({ apiKey: opts.apiKey });
   const modelId = opts.model ?? DEFAULT_MODEL;
+  const defaultReasoning = opts.reasoning;
 
   return {
     async stream(options: StreamOptions): Promise<StreamResult> {
-      const tools = buildTools(options.tools);
+      const tools = getCachedTools(options.tools);
       const activeModel = options.model ?? modelId;
 
       const result = streamText({
         model: google(activeModel),
         messages: toModelMessages(options.messages),
-        ...optionalStreamFields(options, tools),
+        ...optionalStreamFields(options, tools, defaultReasoning),
       });
 
       let text = "";
@@ -54,12 +59,31 @@ export function createGeminiProvider(opts: GeminiProviderOptions): LLMProvider {
       }
 
       const usage = await finishResult.usage;
+      const step = await finishResult.finalStep;
+      const perf = step.performance;
+
+      const performance: StreamResult["performance"] = {
+        responseTimeMs: perf.responseTimeMs,
+      };
+      if (perf.timeToFirstOutputMs !== undefined) {
+        performance.timeToFirstOutputMs = perf.timeToFirstOutputMs;
+      }
+      if (perf.outputTokensPerSecond !== undefined) {
+        performance.outputTokensPerSecond = perf.outputTokensPerSecond;
+      }
 
       return {
         text,
         toolCalls,
         inputTokens: usage?.inputTokens ?? 0,
         outputTokens: usage?.outputTokens ?? 0,
+        ...(usage?.inputTokenDetails?.cacheReadTokens !== undefined
+          ? { cachedInputTokens: usage.inputTokenDetails.cacheReadTokens }
+          : {}),
+        ...(usage?.outputTokenDetails?.reasoningTokens !== undefined
+          ? { reasoningTokens: usage.outputTokenDetails.reasoningTokens }
+          : {}),
+        performance,
       };
     },
 
@@ -82,9 +106,25 @@ export function createGeminiProvider(opts: GeminiProviderOptions): LLMProvider {
   };
 }
 
-function buildTools(definitions?: ToolDefinition[]) {
+function toolsFingerprint(definitions: ToolDefinition[]): string {
+  return definitions
+    .map((def) => `${def.name}:${def.description}:${JSON.stringify(def.parameters)}`)
+    .join("|");
+}
+
+function getCachedTools(definitions?: ToolDefinition[]) {
   if (!definitions || definitions.length === 0) return undefined;
 
+  const key = toolsFingerprint(definitions);
+  const cached = toolsCache.get(key);
+  if (cached) return cached;
+
+  const built = buildTools(definitions);
+  if (built) toolsCache.set(key, built);
+  return built;
+}
+
+function buildTools(definitions: ToolDefinition[]) {
   const tools: Record<string, unknown> = {};
 
   for (const def of definitions) {
@@ -121,18 +161,27 @@ function buildTools(definitions?: ToolDefinition[]) {
 
 function optionalStreamFields(
   options: StreamOptions,
-  tools: ReturnType<typeof buildTools>,
+  tools: ReturnType<typeof getCachedTools>,
+  defaultReasoning?: ReasoningLevel,
 ) {
+  const reasoning = options.reasoning ?? defaultReasoning;
+  const activeTools =
+    options.activeTools ?? options.tools?.map((toolDef) => toolDef.name);
+
   return {
-    ...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
+    ...(options.systemPrompt !== undefined ? { instructions: options.systemPrompt } : {}),
     ...(tools !== undefined ? { tools } : {}),
+    ...(tools !== undefined && activeTools !== undefined && activeTools.length > 0
+      ? { activeTools }
+      : {}),
+    ...(reasoning !== undefined ? { reasoning } : {}),
     ...(options.signal !== undefined ? { abortSignal: options.signal } : {}),
   };
 }
 
 function optionalCompleteFields(options: CompleteOptions) {
   return {
-    ...(options.systemPrompt !== undefined ? { system: options.systemPrompt } : {}),
+    ...(options.systemPrompt !== undefined ? { instructions: options.systemPrompt } : {}),
     ...(options.signal !== undefined ? { abortSignal: options.signal } : {}),
   };
 }

@@ -8,10 +8,6 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 ## High priority
 
-- [ ] **Optimize React loop** — Caching and other improvements to reduce unnecessary re-renders and tighten the Ink terminal hot path.
-
-- [ ] **Upgrade to AI SDK v7** — Bump `@ai-sdk/*` and related provider packages; reconcile breaking API changes across runtime and server.
-
 - [ ] **Headless runtime entrypoint** — Thin CLI (e.g. `relay exec --prompt "..."`) that runs `@relay/runtime` directly without HTTP. Proves the runtime is independent of transport; useful for scripts and CI.
 
 - [ ] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite transaction per N tokens or per assistant message). Fanout stays per-token; only persistence batches.
@@ -111,6 +107,8 @@ packages/
 
 ## Medium priority
 
+- [ ] **OpenTelemetry for production** — When deploying beyond local-first: add `@ai-sdk/otel`, `registerTelemetry()` in `apps/server`, wire an OTel collector/exporter (Datadog, Langfuse, Grafana, etc.), and `RELAY_TELEMETRY=1` env. Complements `usage.updated` (product UI) with cross-session ops tracing; not a replacement for the event log.
+
 - [ ] **Implement `CheckpointStore` / `ArtifactStore`** — Interfaces exist in `@relay/types`; checkpoints today go through events + `snapshots` table. Artifact storage for large tool outputs is unimplemented.
 
 - [ ] **Ephemeral execution mode** — Optional runtime wiring with in-memory store (no SQLite) for tests and throwaway runs.
@@ -138,6 +136,11 @@ packages/
 ---
 
 ## Done
+
+### 2026-06-28 — AI SDK v7 + ReAct loop optimizations
+
+- [x] **Upgrade to AI SDK v7** — `ai@7`, `@ai-sdk/google@4`; `instructions`, `createGoogle`, `activeTools`, reasoning passthrough.
+- [x] **Optimize React loop** — Tool-schema memoization, stable instructions for implicit caching, `usage.updated` events with TTFT/tok/s/cache metrics in terminal.
 
 ### 2026-06-26 — Platform seam adapters + interface extensions
 

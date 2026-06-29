@@ -11,3 +11,13 @@ Relay intentionally uses **TypeScript + Bun** for the MVP runtime.
 4. **Portability** — TypeScript runs on Bun and Node 24. The runtime package has no HTTP dependency. Storage, providers, and loops are independently replaceable.
 
 5. **Measure before refactoring** — Profile when event throughput exceeds local SQLite write capacity or SSE fanout becomes measurable.
+
+## LLM token efficiency (`@relay/providers`)
+
+Relay uses **AI SDK v7** as the Gemini transport only — not as the agent framework. Token-oriented optimizations live in the provider adapter:
+
+1. **Stable `instructions` prefix** — System prompt is passed via `instructions`, not as a `system` message in history. This keeps a stable prefix for Gemini implicit caching across tool-loop iterations.
+2. **Tool schema memoization** — Built Zod tool schemas are cached by definition fingerprint so repeated iterations do not rebuild identical schemas.
+3. **`activeTools`** — Only selected tool names are sent to the model each call (defaults to all registered tools; the loop can subset later as the registry grows).
+
+Per-call usage and latency surface through **`usage.updated`** events (tokens, estimated cost, cache hits, TTFT, tok/s). That is the product metrics path for the terminal and any `@relay/sdk` observer. OpenTelemetry (`@ai-sdk/otel`) is deferred until production deployment — see [todolist.md](../todolist.md).

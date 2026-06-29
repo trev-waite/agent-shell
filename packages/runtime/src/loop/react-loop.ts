@@ -1,8 +1,9 @@
 import { ulid } from "ulid";
 import type { ExecutionLoop, EventHandler } from "@relay/types";
-import type { LLMProvider, Message } from "@relay/providers";
+import type { LLMProvider, Message, StreamResult } from "@relay/providers";
 import type { ToolRegistry } from "@relay/tool-registry";
 import { sanitize, sanitizeObject } from "../sanitize.js";
+import { RELAY_SYSTEM_PROMPT } from "./system-prompt.js";
 
 const MAX_ITERATIONS = 10;
 
@@ -90,7 +91,7 @@ export class ReActLoop implements ExecutionLoop {
         });
 
         assistantContent = result.text || assistantContent;
-        emitCostDelta(emit, sessionId, result.inputTokens, result.outputTokens);
+        emitUsageUpdated(emit, sessionId, result);
 
         if (result.toolCalls.length === 0) {
           this.messages.push({ role: "assistant", content: sanitize(assistantContent) });
@@ -108,6 +109,7 @@ export class ReActLoop implements ExecutionLoop {
           });
 
           this.saveCheckpoint(emit, iterations);
+          emitSessionCompleted(emit, sessionId, iterations);
           return;
         }
 
@@ -177,7 +179,7 @@ export class ReActLoop implements ExecutionLoop {
     return provider.stream({
       messages,
       tools,
-      systemPrompt: SYSTEM_PROMPT,
+      systemPrompt: RELAY_SYSTEM_PROMPT,
       onToken,
       ...(this.opts.model !== undefined ? { model: this.opts.model } : {}),
       signal: this.abortController.signal,
@@ -329,20 +331,6 @@ export class ReActLoop implements ExecutionLoop {
   }
 }
 
-const SYSTEM_PROMPT = `You are a helpful AI assistant running locally via Relay.
-You have access to tools for reading files and executing read-only shell commands (pwd, ls, cat).
-Use tools when needed to answer questions about the local environment.
-Never request or expose secrets, API keys, or environment variables.
-
-The user sees your replies in a plain terminal (not a browser). Write for that UI:
-- Use short paragraphs and plain sentences by default.
-- For emphasis: **bold** or __bold__ sparingly.
-- For paths, commands, and identifiers: \`inline code\` only — no fenced \`\`\` blocks.
-- For lists: lines starting with "-" or "1." — no nested or deeply indented lists.
-- Do not use # headings, tables, blockquotes, images, or [links](url). Name files and URLs inline.
-- Keep lines under ~80 characters when listing files or showing code snippets.
-- Prefer one clear answer over long formatted documents.`;
-
 function estimateCost(inputTokens: number, outputTokens: number): number {
   const inputCost = (inputTokens / 1_000_000) * 0.1;
   const outputCost = (outputTokens / 1_000_000) * 0.4;
@@ -353,24 +341,54 @@ function roundCost(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-function emitCostDelta(
+function emitUsageUpdated(
   emit: EventHandler,
   sessionId: string,
-  inputTokens: number,
-  outputTokens: number,
+  result: StreamResult,
 ): void {
+  const { inputTokens, outputTokens } = result;
   if (inputTokens === 0 && outputTokens === 0) return;
 
+  const performance = result.performance;
   emit({
     id: ulid(),
     sessionId,
-    type: "cost.updated",
+    type: "usage.updated",
     timestamp: Date.now(),
     payload: {
       inputTokens,
       outputTokens,
       totalCost: estimateCost(inputTokens, outputTokens),
       currency: "USD",
+      ...(result.cachedInputTokens !== undefined
+        ? { cachedInputTokens: result.cachedInputTokens }
+        : {}),
+      ...(result.reasoningTokens !== undefined
+        ? { reasoningTokens: result.reasoningTokens }
+        : {}),
+      ...(performance?.responseTimeMs !== undefined
+        ? { responseTimeMs: performance.responseTimeMs }
+        : {}),
+      ...(performance?.timeToFirstOutputMs !== undefined
+        ? { timeToFirstOutputMs: performance.timeToFirstOutputMs }
+        : {}),
+      ...(performance?.outputTokensPerSecond !== undefined
+        ? { outputTokensPerSecond: performance.outputTokensPerSecond }
+        : {}),
     },
+  });
+}
+
+function emitSessionCompleted(
+  emit: EventHandler,
+  sessionId: string,
+  iteration: number,
+): void {
+  emit({
+    id: ulid(),
+    sessionId,
+    type: "session.completed",
+    timestamp: Date.now(),
+    payload: { iteration },
   });
 }

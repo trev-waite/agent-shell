@@ -9,6 +9,10 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
   const result: ModelMessage[] = [];
 
   for (const message of messages) {
+    if (message.role === "system") {
+      continue;
+    }
+
     if (message.role === "tool") {
       if (!message.toolCallId || !message.toolName) continue;
       result.push({
@@ -48,7 +52,7 @@ export function toModelMessages(messages: Message[]): ModelMessage[] {
       continue;
     }
 
-    if (message.role === "user" || message.role === "assistant" || message.role === "system") {
+    if (message.role === "user" || message.role === "assistant") {
       result.push({ role: message.role, content: message.content });
     }
   }

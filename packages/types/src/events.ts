@@ -4,7 +4,8 @@ export type EventType =
   | "tool.started"
   | "tool.completed"
   | "checkpoint.saved"
-  | "cost.updated"
+  | "usage.updated"
+  | "session.completed"
   | "message.completed"
   | "error";
 
@@ -44,11 +45,21 @@ export interface CheckpointSavedPayload {
   data: unknown;
 }
 
-export interface CostUpdatedPayload {
+export interface UsageUpdatedPayload {
   inputTokens: number;
   outputTokens: number;
   totalCost: number;
   currency: string;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  responseTimeMs?: number;
+  timeToFirstOutputMs?: number;
+  outputTokensPerSecond?: number;
+}
+
+export interface SessionCompletedPayload {
+  /** ReAct loop iteration count for this execution turn. */
+  iteration: number;
 }
 
 export interface MessageCompletedPayload {
@@ -69,7 +80,8 @@ export type RelayEvent =
   | (RelayEventBase & { type: "tool.started"; payload: ToolStartedPayload })
   | (RelayEventBase & { type: "tool.completed"; payload: ToolCompletedPayload })
   | (RelayEventBase & { type: "checkpoint.saved"; payload: CheckpointSavedPayload })
-  | (RelayEventBase & { type: "cost.updated"; payload: CostUpdatedPayload })
+  | (RelayEventBase & { type: "usage.updated"; payload: UsageUpdatedPayload })
+  | (RelayEventBase & { type: "session.completed"; payload: SessionCompletedPayload })
   | (RelayEventBase & { type: "message.completed"; payload: MessageCompletedPayload })
   | (RelayEventBase & { type: "error"; payload: ErrorPayload });
 
