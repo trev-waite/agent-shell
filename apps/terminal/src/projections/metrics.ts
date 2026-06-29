@@ -1,6 +1,6 @@
 import type { LayoutMode } from "../theme.js";
 import type { Metrics, ToolTrace } from "../state.js";
-import { formatCost, formatDuration, formatTokPerSec, formatTokens } from "../utils/format.js";
+import { formatCost, formatDuration, formatLatencyMs, formatTokPerSec, formatTokens } from "../utils/format.js";
 
 export type MetricColorKey = "text" | "status" | "motion" | "error";
 
@@ -26,7 +26,7 @@ export function buildMetricsGrid(
 
   const ttftValue =
     metrics.lastTimeToFirstOutputMs !== null
-      ? formatDuration(metrics.lastTimeToFirstOutputMs)
+      ? formatLatencyMs(metrics.lastTimeToFirstOutputMs)
       : "—";
 
   const allCells: MetricCellData[] = [
@@ -92,7 +92,7 @@ export function buildMetricsGrid(
       label: "RESPONSE",
       value:
         metrics.lastResponseTimeMs !== null
-          ? formatDuration(metrics.lastResponseTimeMs)
+          ? formatLatencyMs(metrics.lastResponseTimeMs)
           : "—",
       colorKey: "text",
     },

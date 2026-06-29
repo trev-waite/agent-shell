@@ -5,7 +5,7 @@ import { isSessionBusy } from "./stateHelpers.js";
 import { buildTraceTimeline, tracesForTurn } from "./projections/trace.js";
 import { buildMetricsGrid } from "./projections/metrics.js";
 import { deriveFooterStatus } from "./projections/footer.js";
-import { formatDuration, formatTimestamp, formatTokens } from "./utils/format.js";
+import { formatDuration, formatLatencyMs, formatTimestamp, formatTokens } from "./utils/format.js";
 import { formatHeaderUsage } from "./projections/header.js";
 
 describe("uiReducer EVENT dedupe", () => {
@@ -417,5 +417,11 @@ describe("format utils", () => {
     expect(formatTimestamp(ts)).toMatch(/10:42:11/);
     expect(formatDuration(2350)).toBe("2.35s");
     expect(formatTokens(1243)).toBe("1,243");
+  });
+
+  test("formatLatencyMs caps sub-second values to 2 decimal places", () => {
+    expect(formatLatencyMs(420)).toBe("420.00ms");
+    expect(formatLatencyMs(420.789)).toBe("420.79ms");
+    expect(formatLatencyMs(1200)).toBe("1.20s");
   });
 });

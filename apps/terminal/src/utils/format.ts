@@ -15,6 +15,12 @@ export function formatDuration(ms: number): string {
   return `${mins}m ${String(secs).padStart(2, "0")}s`;
 }
 
+/** Latency metrics (TTFT, response time) — cap millisecond precision to 2 decimal places. */
+export function formatLatencyMs(ms: number): string {
+  if (ms < 1000) return `${ms.toFixed(2)}ms`;
+  return formatDuration(ms);
+}
+
 export function formatTokens(n: number): string {
   return n.toLocaleString("en-US");
 }
