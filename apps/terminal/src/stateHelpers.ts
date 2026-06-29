@@ -1,5 +1,15 @@
 import { getEnabledProviders } from "@relay/types";
+import type { ChatChromeOptions } from "./projections/chatViewport.js";
 import type { UIState } from "./state.js";
+
+export function chatChromeFrom(state: UIState): ChatChromeOptions {
+  return {
+    serverOffline: state.serverOnline === false,
+    notice: state.commandNotice,
+    queueCount: state.messageQueue.length,
+    hasOverlay: state.activeOverlay !== "none",
+  };
+}
 
 export function modelOverlayState(state: UIState): {
   menuProviderIndex: number;

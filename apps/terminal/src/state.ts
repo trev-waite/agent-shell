@@ -54,6 +54,16 @@ export interface QueuedMessage {
   enqueuedAt: number;
 }
 
+export interface ChatScrollState {
+  followTail: boolean;
+  offsetFromBottom: number;
+}
+
+export const initialChatScroll: ChatScrollState = {
+  followTail: true,
+  offsetFromBottom: 0,
+};
+
 export interface UIState {
   messages: ChatMessage[];
   traces: ToolTrace[];
@@ -78,6 +88,8 @@ export interface UIState {
   colorSchemePreference: ColorSchemePreference;
   commandNotice: string | null;
   messageQueue: QueuedMessage[];
+  chatScroll: ChatScrollState;
+  showScrollbar: boolean;
 }
 
 export type UIAction =
@@ -107,7 +119,12 @@ export type UIAction =
   | { type: "RESTORE_QUEUE_HEAD"; item: QueuedMessage }
   | { type: "EVENT"; event: RelayEvent }
   | { type: "NEW_SESSION" }
-  | { type: "RESET" };
+  | { type: "RESET" }
+  | { type: "SCROLL_BY"; delta: number; maxOffset: number }
+  | { type: "SCROLL_TO_BOTTOM" }
+  | { type: "SCROLL_TO_TOP"; maxOffset: number }
+  | { type: "TOGGLE_SCROLLBAR" }
+  | { type: "CLAMP_SCROLL"; maxOffset: number };
 
 export const initialState: UIState = {
   messages: [],
@@ -143,10 +160,55 @@ export const initialState: UIState = {
   colorSchemePreference: "auto",
   commandNotice: null,
   messageQueue: [],
+  chatScroll: initialChatScroll,
+  showScrollbar: true,
 };
 
 function hasStreamingAssistant(messages: ChatMessage[]): boolean {
   return messages.some((m) => m.role === "assistant" && m.streaming);
+}
+
+function applyScrollBy(
+  scroll: ChatScrollState,
+  delta: number,
+  maxOffset: number,
+): ChatScrollState {
+  if (maxOffset <= 0) {
+    return initialChatScroll;
+  }
+
+  if (scroll.followTail) {
+    if (delta >= 0) return scroll;
+    return {
+      followTail: false,
+      offsetFromBottom: Math.min(maxOffset, delta < 0 ? -delta : delta),
+    };
+  }
+
+  let newOffset = scroll.offsetFromBottom - delta;
+  newOffset = Math.max(0, Math.min(maxOffset, newOffset));
+
+  if (newOffset <= 1) {
+    return initialChatScroll;
+  }
+
+  return { followTail: false, offsetFromBottom: newOffset };
+}
+
+function clampManualScroll(
+  scroll: ChatScrollState,
+  maxOffset: number,
+): ChatScrollState {
+  if (maxOffset <= 0) {
+    return initialChatScroll;
+  }
+  if (scroll.followTail) {
+    return scroll;
+  }
+  return {
+    followTail: false,
+    offsetFromBottom: Math.max(0, Math.min(maxOffset, scroll.offsetFromBottom)),
+  };
 }
 
 function focusableIds(state: UIState): string[] {
@@ -204,6 +266,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         sessionId: action.sessionId,
         seenEventIds: new Set(),
         lastEventId: null,
+        chatScroll: initialChatScroll,
       };
     }
     case "SET_INPUT": {
@@ -391,9 +454,32 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...initialState,
         ...preservePreferences(state),
         streamConnected: false,
+        showScrollbar: state.showScrollbar,
       };
     case "RESET":
-      return { ...initialState };
+      return { ...initialState, showScrollbar: state.showScrollbar };
+    case "SCROLL_BY":
+      return {
+        ...state,
+        chatScroll: applyScrollBy(state.chatScroll, action.delta, action.maxOffset),
+      };
+    case "SCROLL_TO_BOTTOM":
+      return { ...state, chatScroll: initialChatScroll };
+    case "SCROLL_TO_TOP":
+      return {
+        ...state,
+        chatScroll:
+          action.maxOffset <= 0
+            ? initialChatScroll
+            : { followTail: false, offsetFromBottom: action.maxOffset },
+      };
+    case "TOGGLE_SCROLLBAR":
+      return { ...state, showScrollbar: !state.showScrollbar };
+    case "CLAMP_SCROLL":
+      return {
+        ...state,
+        chatScroll: clampManualScroll(state.chatScroll, action.maxOffset),
+      };
     case "EVENT": {
       const event = action.event;
       if (state.seenEventIds.has(event.id)) {

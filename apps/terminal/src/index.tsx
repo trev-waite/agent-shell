@@ -9,6 +9,10 @@ import { ThemeProvider } from "./hooks/ThemeContext.js";
 import { useLayoutMode } from "./hooks/useLayoutMode.js";
 import { handleKey } from "./keyboard.js";
 import {
+  computeChatMaxRows,
+  deriveScrollContext,
+} from "./projections/chatViewport.js";
+import {
   runSlashCommand,
   isSlashCommand,
 } from "./commands.js";
@@ -19,7 +23,7 @@ import {
   type UIAction,
   type UIState,
 } from "./state.js";
-import { isSessionBusy } from "./stateHelpers.js";
+import { isSessionBusy, chatChromeFrom } from "./stateHelpers.js";
 
 const client = createClient();
 
@@ -252,14 +256,41 @@ function TerminalApp() {
     return () => clearTimeout(timeout);
   }, [state.commandNotice]);
 
+  const chatChrome = chatChromeFrom(state);
+  const maxRows = computeChatMaxRows(layout, chatChrome);
+  const scrollContext = deriveScrollContext(
+    state.messages,
+    state.traces,
+    state.activity,
+    layout,
+    maxRows,
+    state.showScrollbar,
+    state.chatScroll,
+  );
+
+  useEffect(() => {
+    dispatch({ type: "CLAMP_SCROLL", maxOffset: scrollContext.maxScrollOffset });
+  }, [scrollContext.maxScrollOffset]);
+
   useInput((input, key) => {
     const current = stateRef.current;
+    const rows = computeChatMaxRows(layout, chatChromeFrom(current));
+    const scroll = deriveScrollContext(
+      current.messages,
+      current.traces,
+      current.activity,
+      layout,
+      rows,
+      current.showScrollbar,
+      current.chatScroll,
+    );
     const result = handleKey(
       input,
       key,
       {
         state: current,
         layout,
+        scroll,
         exit,
         onNewSession: () => {
           endSessionStream();

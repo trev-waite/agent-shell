@@ -27,21 +27,41 @@ bun run dev:terminal
 | `bun run dev:terminal` | Ink chat UI (connects via `@relay/sdk`) |
 | `bun run dev` | Both via Turborepo — terminal input may not work; prefer two terminals |
 
-Type a prompt and press Enter. Follow-up messages continue the same conversation (full history is sent to the model). Use **/** for a command palette (`/model`, `/trace`, `/metrics`, `/new`, `/help`). Press **Tab** or **⌘O** (Ctrl+O on Linux) to open the model picker. If the agent is still replying, your next message is **queued** and shown above the input bar until it sends. Tool activity appears inline under your message; open **/trace** or **/metrics** for full detail in overlay panels above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
+Type a prompt and press Enter. Follow-up messages continue the same conversation (full history is sent to the model). Use **/** for a command palette (`/model`, `/session`, `/theme`, `/new`, `/help`). Press **Tab** or **Ctrl+O** to open the model picker. If the agent is still replying, your next message is **queued** and shown above the input bar until it sends. Tool activity appears inline under your message; open **/session** (or **Ctrl+P**) for trace and metrics in an overlay above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
+
+Run **/help** in the TUI for the full command and keyboard list.
 
 ## Terminal controls
 
+All shortcuts use **Control (^)**, not Command (⌘). On macOS, ⌘ shortcuts are handled by Terminal.app or the OS, not the Ink UI. Most **Ctrl+letter** bindings are mnemonic (P panel, T theme, U/D page, and so on).
+
 | Key | Action |
 |-----|--------|
-| Enter | Send prompt (works with trace/metrics overlays open) |
-| `/` | Slash command palette — `/model`, `/trace`, `/metrics`, `/theme`, `/new`, `/help` |
-| Tab / ⌘O (Ctrl+O) | Open model picker overlay |
-| ↑↓ | Navigate slash palette or model list |
+| Enter | Send prompt (works with session overlay open) |
+| `/` | Slash command palette — `/model`, `/session`, `/theme`, `/new`, `/help` |
+| Tab / **Ctrl+O** | Open model picker overlay |
+| **Ctrl+P** | Toggle session panel (trace + metrics) |
+| **Ctrl+T** | Cycle color theme (auto → dark → light) |
+| ↑↓ | Navigate slash palette or model list (when an overlay is open) |
 | ←→ | Switch provider tab (model picker) |
-| `]` / `[` | Expand / collapse focused trace item (trace overlay) |
-| ⌘⇧T / ⌘⇧M | Toggle trace / metrics overlay |
+| `[` / `]` | Expand / collapse focused trace item (**session overlay only**) |
 | Esc | Close top overlay, or exit when none open |
 | Ctrl+C | Exit terminal (server keeps running) |
+
+### Chat scroll
+
+Line scroll uses **↑ / ↓** with an empty prompt only (so you can type messages starting with any letter). All other scroll keys use **Control (^)** and work anytime no overlay is open.
+
+While scrolled up, new messages do not auto-follow until you press **Ctrl+E** (jump to bottom).
+
+| Key | Action |
+|-----|--------|
+| ↑ / ↓ | Scroll one line (empty prompt only) |
+| **Ctrl+U** / **Ctrl+D** | Scroll half a page up / down |
+| **Ctrl+A** / **Ctrl+E** | Jump to top / bottom (Ctrl+E re-enables follow mode) |
+| **Ctrl+B** | Toggle scrollbar |
+
+**Note:** Fn+Page Up/Down and Home/End often scroll the terminal scrollback buffer instead of the chat pane — use the keys above instead.
 
 ## Multi-turn conversations
 

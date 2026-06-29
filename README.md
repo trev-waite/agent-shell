@@ -24,7 +24,7 @@ bun run dev:server    # Terminal 1 — runtime at http://127.0.0.1:4310
 bun run dev:terminal  # Terminal 2 — Ink UI (needs a real TTY)
 ```
 
-Type a prompt and press Enter. Use **/** for commands (`/model`, `/trace`, `/metrics`, `/new`, `/help`).
+Type a prompt and press Enter. Use **/** for commands (`/model`, `/session`, `/new`, `/help`). Press **Ctrl+O** or **Tab** for the model picker; **/help** lists all keyboard shortcuts.
 
 Full setup, terminal controls, multi-turn sessions, replay, and checkpoint resume: [Getting Started](./docs/getting-started.md)
 

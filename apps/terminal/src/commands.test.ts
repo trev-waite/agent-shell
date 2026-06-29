@@ -42,6 +42,8 @@ describe("slash commands", () => {
   test("/help returns help text", () => {
     const result = parseSlashCommand("/help");
     expect(result?.message).toContain("/model");
+    expect(result?.message).toContain("Ctrl+O");
+    expect(result?.message).toContain("Ctrl+U/D page");
     expect(result?.actions).toEqual([]);
   });
 
