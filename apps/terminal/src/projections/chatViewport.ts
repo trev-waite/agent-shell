@@ -324,13 +324,21 @@ export function displayMessageContent(
   truncateTopRows: number | null,
   truncateBottomRows: number | null = null,
 ): string {
+  const width = messageContentWidth(msg.role, columns);
   let content = msg.content;
 
+  if (truncateTopRows !== null && truncateBottomRows !== null) {
+    const totalRows = estimateContentRows(content, width);
+    const skipRows = Math.max(0, totalRows - truncateTopRows);
+    const head = truncateContentFromBottom(content, width, skipRows + truncateBottomRows);
+    return truncateContentFromTop(head, width, truncateBottomRows);
+  }
+
   if (truncateTopRows !== null) {
-    content = truncateContentFromTop(content, messageContentWidth(msg.role, columns), truncateTopRows);
+    content = truncateContentFromTop(content, width, truncateTopRows);
   }
   if (truncateBottomRows !== null) {
-    content = truncateContentFromBottom(content, messageContentWidth(msg.role, columns), truncateBottomRows);
+    content = truncateContentFromBottom(content, width, truncateBottomRows);
   }
 
   return content;

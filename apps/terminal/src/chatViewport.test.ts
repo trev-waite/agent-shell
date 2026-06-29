@@ -10,6 +10,7 @@ import {
   computeChromeRows,
   computeScrollbarMetrics,
   computeScrollTop,
+  displayMessageContent,
   estimateContentRows,
   selectChatViewportFromScrollTop,
   truncateContentFromBottom,
@@ -84,6 +85,54 @@ describe("chatViewport", () => {
     const truncated = truncateContentFromBottom("line one\nline two\nline three", 10, 2);
     expect(truncated).toContain("line one");
     expect(truncated.endsWith("…")).toBe(true);
+  });
+
+  test("displayMessageContent slices middle of a long single message", () => {
+    const columns = 13;
+    const width = 10;
+    const lines = Array.from({ length: 20 }, (_, i) => `line-${String(i).padStart(2, "0")}`);
+    const content = lines.join("\n");
+    const totalRows = estimateContentRows(content, width);
+    const skipRows = 5;
+    const keepRows = 4;
+
+    const result = displayMessageContent(
+      msg({ id: "1", role: "assistant", content }),
+      columns,
+      totalRows - skipRows,
+      keepRows,
+    );
+
+    expect(result).toContain("line-05");
+    expect(result).toContain("line-08");
+    expect(result).not.toContain("line-04");
+    expect(result).not.toContain("line-09");
+  });
+
+  test("scrolled long single message shows middle content", () => {
+    const content = Array.from({ length: 30 }, (_, i) => `row-${String(i).padStart(2, "0")}`).join("\n");
+    const messages: ChatMessage[] = [
+      msg({ id: "1", role: "assistant", content, timestamp: 1 }),
+    ];
+    const maxRows = 6;
+    const tailView = buildChatViewModel(messages, [], null, layout, maxRows, initialChatScroll);
+    const midOffset = Math.max(2, Math.floor(tailView.maxScrollOffset / 2));
+    const midView = buildChatViewModel(messages, [], null, layout, maxRows, {
+      followTail: false,
+      offsetFromBottom: midOffset,
+    });
+
+    expect(midView.visibleMessages).toHaveLength(1);
+    expect(midView.viewport.truncateFirstMessageRows).not.toBeNull();
+    expect(midView.viewport.truncateLastMessageRows).not.toBeNull();
+    const shown = displayMessageContent(
+      midView.visibleMessages[0]!,
+      layout.columns,
+      midView.viewport.truncateFirstMessageRows,
+      midView.viewport.truncateLastMessageRows,
+    );
+    expect(shown).toContain("row-");
+    expect(shown).not.toBe("");
   });
 
   test("followTail scrollTop pins to bottom", () => {
