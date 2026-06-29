@@ -10,7 +10,6 @@ import {
   computeScrollbarMetrics,
   computeScrollTop,
   estimateContentRows,
-  selectChatViewport,
   selectChatViewportFromScrollTop,
   truncateContentFromBottom,
   truncateContentFromTop,
@@ -58,7 +57,7 @@ describe("chatViewport", () => {
     expect(computeChatMaxRows(layout, chrome)).toBe(layout.rows - chromeRows);
   });
 
-  test("selectChatViewport keeps recent messages when history overflows", () => {
+  test("buildChatViewModel keeps recent messages when history overflows", () => {
     const messages: ChatMessage[] = [
       msg({ id: "1", role: "user", content: "short", timestamp: 1 }),
       msg({
@@ -69,9 +68,9 @@ describe("chatViewport", () => {
       }),
     ];
 
-    const viewport = selectChatViewport(messages, 8, layout.columns, [], null, layout);
-    expect(viewport.startIndex).toBeGreaterThan(0);
-    expect(viewport.hiddenMessageCount).toBeGreaterThan(0);
+    const view = buildChatViewModel(messages, [], null, layout, 8, initialChatScroll);
+    expect(view.viewport.startIndex).toBeGreaterThan(0);
+    expect(view.viewport.hiddenMessageCount).toBeGreaterThan(0);
   });
 
   test("truncateContentFromTop keeps the tail of long content", () => {

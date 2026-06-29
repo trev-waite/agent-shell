@@ -11,7 +11,6 @@ import { handleKey } from "./keyboard.js";
 import {
   computeChatMaxRows,
   deriveScrollContext,
-  type ChatChromeOptions,
 } from "./projections/chatViewport.js";
 import {
   runSlashCommand,
@@ -24,7 +23,7 @@ import {
   type UIAction,
   type UIState,
 } from "./state.js";
-import { isSessionBusy } from "./stateHelpers.js";
+import { isSessionBusy, chatChromeFrom } from "./stateHelpers.js";
 
 const client = createClient();
 
@@ -50,15 +49,6 @@ function cancelServerSession(sessionId: string | null): void {
   void client.cancel(sessionId).catch(() => {
     // Session may already be idle or the server may be offline.
   });
-}
-
-function chatChromeFrom(state: UIState): ChatChromeOptions {
-  return {
-    serverOffline: state.serverOnline === false,
-    notice: state.commandNotice,
-    queueCount: state.messageQueue.length,
-    hasOverlay: state.activeOverlay !== "none",
-  };
 }
 
 function submitPrompt(

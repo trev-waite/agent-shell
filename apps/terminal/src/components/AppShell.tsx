@@ -1,9 +1,10 @@
 import { Box, Text } from "ink";
 import { useTheme } from "../hooks/ThemeContext.js";
 import { deriveFooterStatus } from "../projections/footer.js";
-import { computeChatMaxRows, deriveScrollContext, type ChatChromeOptions } from "../projections/chatViewport.js";
+import { computeChatMaxRows, deriveScrollContext } from "../projections/chatViewport.js";
 import { EDGE_PADDING, type LayoutConfig } from "../theme.js";
 import type { UIState } from "../state.js";
+import { chatChromeFrom } from "../stateHelpers.js";
 import { ChatPanel } from "./ChatPanel.js";
 import { Footer } from "./Footer.js";
 import { Header } from "./Header.js";
@@ -24,12 +25,7 @@ export function AppShell({ state, layout }: AppShellProps) {
     state.serverOnline,
   );
 
-  const chatChrome: ChatChromeOptions = {
-    serverOffline: state.serverOnline === false,
-    notice: state.commandNotice,
-    queueCount: state.messageQueue.length,
-    hasOverlay: state.activeOverlay !== "none",
-  };
+  const chatChrome = chatChromeFrom(state);
   const chatMaxRows = computeChatMaxRows(layout, chatChrome);
   const scrollContext = deriveScrollContext(
     state.messages,

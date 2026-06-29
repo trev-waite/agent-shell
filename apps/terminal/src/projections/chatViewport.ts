@@ -299,44 +299,6 @@ export function estimateContentRows(content: string, width: number): number {
   return content.split("\n").reduce((sum, line) => sum + wrapLineCount(line, width), 0);
 }
 
-/** @deprecated Use selectChatViewportFromScrollTop via buildChatViewModel */
-export function selectChatViewport(
-  messages: ChatMessage[],
-  maxRows: number,
-  columns: number,
-  traces: ToolTrace[],
-  activity: ActivityStatus | null,
-  layout: LayoutConfig,
-  lastUserIndex = lastUserMessageIndex(messages),
-  showActivity = shouldShowActivity(messages, activity),
-): ChatViewport {
-  const ledger = buildContentLedger(
-    messages,
-    columns,
-    traces,
-    activity,
-    layout,
-    lastUserIndex,
-    showActivity,
-  );
-  const scrollTop = computeScrollTop(ledger.totalRows, maxRows, {
-    followTail: true,
-    offsetFromBottom: 0,
-  });
-  return selectChatViewportFromScrollTop(
-    messages,
-    ledger,
-    scrollTop,
-    maxRows,
-    columns,
-    traces,
-    activity,
-    layout,
-    lastUserIndex,
-    showActivity,
-  );
-}
-
 export function selectChatViewportFromScrollTop(
   messages: ChatMessage[],
   ledger: ContentLedger,
