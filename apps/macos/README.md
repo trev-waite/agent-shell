@@ -1,6 +1,14 @@
 # Relay Mac
 
+> **Work in progress — not production-ready.** This Mac client is an early attempt. It connects to the local Relay server (sessions load, health checks pass), but **the chat transcript does not reliably display messages yet**. Expect rough edges; do not merge to main until the message UI is fixed.
+
 Native Swift macOS 26 client for Relay. Consumes the existing HTTP+SSE API — no changes to server, runtime, SDK, or terminal.
+
+## Known issues (WIP)
+
+- Message bubbles often do not appear after opening a session or sending a prompt, even when the server returns events.
+- Scroll-engine and AppKit/SwiftUI transcript layers are still being debugged.
+- Phase 3 scaffolds (bundled server, onboarding) are not wired up.
 
 ## Requirements
 
@@ -47,7 +55,7 @@ RelayKit/
 
 ## Scroll engineering
 
-The chat transcript uses AppKit `NSScrollView` with a `ScrollEngine` state machine implementing follow-mode / detached reading. See the plan appendix for the 15-rule QA checklist.
+The chat transcript targets a `ScrollEngine` follow/detached state machine. Rendering is currently SwiftUI-based while AppKit scroll integration is revisited.
 
 ## Future (Phase 3 scaffolds)
 
