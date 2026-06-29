@@ -124,6 +124,18 @@ function TerminalApp() {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const dispatchAction = useCallback((action: UIAction) => {
+    if (
+      action.type === "SCROLL_BY" ||
+      action.type === "SCROLL_TO_BOTTOM" ||
+      action.type === "SCROLL_TO_TOP" ||
+      action.type === "CLAMP_SCROLL"
+    ) {
+      stateRef.current = uiReducer(stateRef.current, action);
+    }
+    dispatch(action);
+  }, []);
+
   const endSessionStream = useCallback(() => {
     unsubscribeRef.current?.();
     unsubscribeRef.current = null;
@@ -297,7 +309,7 @@ function TerminalApp() {
           cancelServerSession(current.sessionId);
         },
       },
-      dispatch,
+      dispatchAction,
     );
     if (result === "submit") {
       handleInputSubmit(current, dispatch, subscribeToSession, {
