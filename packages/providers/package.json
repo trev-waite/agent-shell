@@ -14,12 +14,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ai-sdk/google": "^3.0.83",
+    "@ai-sdk/google": "^4.0.2",
     "@relay/types": "workspace:*",
-    "ai": "^6.0.208",
+    "ai": "^7.0.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/bun": "latest",
+    "bun-types": "1.3.14",
     "typescript": "^6.0.3"
   }
 }

@@ -19,6 +19,11 @@ export function formatTokens(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+export function formatTokPerSec(value: number): string {
+  if (value < 10) return `${value.toFixed(1)} t/s`;
+  return `${Math.round(value)} t/s`;
+}
+
 /** Display cost with enough precision for sub-cent API usage. */
 export function formatCost(totalCost: number, currency: string): string {
   if (totalCost === 0) return `0.0000 ${currency}`;

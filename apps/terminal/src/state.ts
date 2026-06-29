@@ -1,4 +1,4 @@
-import type { RelayEvent } from "@relay/types";
+import type { RelayEvent, UsageUpdatedPayload } from "@relay/types";
 import type { GeminiModelId, ModelProviderId } from "@relay/types";
 import {
   DEFAULT_GEMINI_MODEL,
@@ -40,6 +40,10 @@ export interface Metrics {
   totalCost: number;
   currency: string;
   sessionStatus: string;
+  cachedInputTokens: number;
+  lastTimeToFirstOutputMs: number | null;
+  lastOutputTokensPerSecond: number | null;
+  lastResponseTimeMs: number | null;
 }
 
 export type OverlayPanel = "none" | "slash" | "session" | "model";
@@ -114,6 +118,10 @@ export const initialState: UIState = {
     totalCost: 0,
     currency: "USD",
     sessionStatus: "idle",
+    cachedInputTokens: 0,
+    lastTimeToFirstOutputMs: null,
+    lastOutputTokensPerSecond: null,
+    lastResponseTimeMs: null,
   },
   sessionId: null,
   input: "",
@@ -150,6 +158,30 @@ function focusableIds(state: UIState): string[] {
       status: t.status,
     })),
   );
+}
+
+function applyUsageUpdatedEvent(
+  base: UIState,
+  payload: UsageUpdatedPayload,
+): UIState {
+  const totalCost =
+    Math.round((base.metrics.totalCost + payload.totalCost) * 1_000_000) / 1_000_000;
+
+  return {
+    ...base,
+    metrics: {
+      ...base.metrics,
+      inputTokens: base.metrics.inputTokens + payload.inputTokens,
+      outputTokens: base.metrics.outputTokens + payload.outputTokens,
+      totalCost,
+      currency: payload.currency,
+      cachedInputTokens:
+        base.metrics.cachedInputTokens + (payload.cachedInputTokens ?? 0),
+      lastTimeToFirstOutputMs: payload.timeToFirstOutputMs ?? null,
+      lastOutputTokensPerSecond: payload.outputTokensPerSecond ?? null,
+      lastResponseTimeMs: payload.responseTimeMs ?? null,
+    },
+  };
 }
 
 export function uiReducer(state: UIState, action: UIAction): UIState {
@@ -391,6 +423,7 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
               isUser && base.sessionStartedAt === null
                 ? event.timestamp
                 : base.sessionStartedAt,
+            ...(isUser ? { sessionEndedAt: null } : {}),
             activity:
               isUser
                 ? { label: "Thinking…", phase: "thinking" }
@@ -501,25 +534,15 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
                 : { label: "Thinking…", phase: "thinking" },
           };
         }
-        case "cost.updated": {
-          const payload = event.payload;
-          const totalCost =
-            Math.round((base.metrics.totalCost + payload.totalCost) * 1_000_000) /
-            1_000_000;
+        case "usage.updated":
+          return applyUsageUpdatedEvent(base, event.payload);
+        case "session.completed":
           return {
             ...base,
-            metrics: {
-              ...base.metrics,
-              inputTokens: base.metrics.inputTokens + payload.inputTokens,
-              outputTokens: base.metrics.outputTokens + payload.outputTokens,
-              totalCost,
-              currency: payload.currency,
-              sessionStatus: "completed",
-            },
             sessionEndedAt: event.timestamp,
             activity: null,
+            metrics: { ...base.metrics, sessionStatus: "completed" },
           };
-        }
         case "error": {
           const payload = event.payload;
           return {

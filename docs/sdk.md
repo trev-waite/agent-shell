@@ -11,7 +11,7 @@ The Ink terminal (`apps/terminal`) is the first consumer, but it is intentionall
 │   script, web)   │ ─────────────────►  continue conversation
 │                  │
 │                  │     subscribe()   GET /sessions/:id/events  (SSE, live)
-│                  │ ◄─────────────────  token.streamed, tool.*, cost.updated, …
+│                  │ ◄─────────────────  token.streamed, tool.*, usage.updated, …
 │                  │
 │                  │     replay()      GET /sessions/:id/replay   (SSE, read-only)
 │                  │ ◄─────────────────  full history from SQLite
@@ -79,8 +79,11 @@ const stop = client.subscribe({
       case "tool.started":
         console.log(`→ ${event.payload.toolName}`);
         break;
-      case "cost.updated":
+      case "usage.updated":
         console.log(`tokens: ${event.payload.inputTokens} in / ${event.payload.outputTokens} out`);
+        break;
+      case "session.completed":
+        console.log(`turn complete (iteration ${event.payload.iteration})`);
         break;
     }
   },

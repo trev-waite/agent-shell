@@ -12,11 +12,27 @@ export interface ToolDefinition {
   parameters: Record<string, unknown>;
 }
 
+export type ReasoningLevel =
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "none"
+  | "provider-default";
+
+export interface LlmCallPerformance {
+  responseTimeMs?: number;
+  timeToFirstOutputMs?: number;
+  outputTokensPerSecond?: number;
+}
+
 export interface StreamOptions {
   messages: Message[];
   tools?: ToolDefinition[];
+  activeTools?: string[];
   systemPrompt?: string;
   model?: string;
+  reasoning?: ReasoningLevel;
   onToken?: (token: string) => void;
   signal?: AbortSignal;
 }
@@ -26,6 +42,9 @@ export interface StreamResult {
   toolCalls: ToolCallRequest[];
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  performance?: LlmCallPerformance;
 }
 
 export interface ToolCallRequest {

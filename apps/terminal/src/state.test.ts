@@ -67,41 +67,88 @@ describe("uiReducer timestamps and tool I/O", () => {
     expect(afterComplete.traces[0]?.status).toBe("completed");
   });
 
-  test("accumulates cost.updated events across turns and tool-loop iterations", () => {
+  test("accumulates usage.updated events across turns and tool-loop iterations", () => {
     const first: RelayEvent = {
-      id: "cost-1",
+      id: "usage-1",
       sessionId: "s",
-      type: "cost.updated",
+      type: "usage.updated",
       timestamp: 100,
       payload: {
         inputTokens: 100,
         outputTokens: 50,
         totalCost: 0.00003,
         currency: "USD",
+        timeToFirstOutputMs: 420,
+        outputTokensPerSecond: 88.5,
+        cachedInputTokens: 10,
       },
     };
     const second: RelayEvent = {
-      id: "cost-2",
+      id: "usage-2",
       sessionId: "s",
-      type: "cost.updated",
+      type: "usage.updated",
       timestamp: 200,
       payload: {
         inputTokens: 80,
         outputTokens: 20,
         totalCost: 0.000016,
         currency: "USD",
+        responseTimeMs: 1200,
       },
+    };
+    const completed: RelayEvent = {
+      id: "session-1",
+      sessionId: "s",
+      type: "session.completed",
+      timestamp: 250,
+      payload: { iteration: 2 },
     };
 
     const afterFirst = uiReducer(initialState, { type: "EVENT", event: first });
     expect(afterFirst.metrics.inputTokens).toBe(100);
     expect(afterFirst.metrics.outputTokens).toBe(50);
     expect(afterFirst.metrics.totalCost).toBe(0.00003);
+    expect(afterFirst.metrics.cachedInputTokens).toBe(10);
+    expect(afterFirst.metrics.lastTimeToFirstOutputMs).toBe(420);
+    expect(afterFirst.metrics.lastOutputTokensPerSecond).toBe(88.5);
+    expect(afterFirst.metrics.sessionStatus).toBe("idle");
 
     const afterSecond = uiReducer(afterFirst, { type: "EVENT", event: second });
     expect(afterSecond.metrics.inputTokens).toBe(180);
     expect(afterSecond.metrics.outputTokens).toBe(70);
     expect(afterSecond.metrics.totalCost).toBe(0.000046);
+    expect(afterSecond.metrics.lastResponseTimeMs).toBe(1200);
+    expect(afterSecond.metrics.lastTimeToFirstOutputMs).toBeNull();
+    expect(afterSecond.metrics.sessionStatus).toBe("idle");
+
+    const afterComplete = uiReducer(afterSecond, { type: "EVENT", event: completed });
+    expect(afterComplete.metrics.sessionStatus).toBe("completed");
+    expect(afterComplete.sessionEndedAt).toBe(250);
+  });
+
+  test("clears sessionEndedAt when a follow-up user message starts", () => {
+    const completed: RelayEvent = {
+      id: "session-1",
+      sessionId: "s",
+      type: "session.completed",
+      timestamp: 250,
+      payload: { iteration: 1 },
+    };
+    const followUp: RelayEvent = {
+      id: "m2",
+      sessionId: "s",
+      type: "message.started",
+      timestamp: 300,
+      payload: { role: "user", content: "again" },
+    };
+
+    const afterComplete = uiReducer(
+      { ...initialState, sessionEndedAt: 250, metrics: { ...initialState.metrics, sessionStatus: "completed" } },
+      { type: "EVENT", event: completed },
+    );
+    const afterFollowUp = uiReducer(afterComplete, { type: "EVENT", event: followUp });
+    expect(afterFollowUp.sessionEndedAt).toBeNull();
+    expect(afterFollowUp.metrics.sessionStatus).toBe("running");
   });
 });
 
@@ -329,7 +376,7 @@ describe("projections", () => {
       "compact",
       2000,
     );
-    expect(cells.map((c) => c.id)).toEqual(["total-time", "tokens", "status", "cost"]);
+    expect(cells.map((c) => c.id)).toEqual(["total-time", "tokens", "ttft", "cost"]);
   });
 
   test("tracesForTurn filters by timestamp", () => {

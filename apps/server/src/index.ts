@@ -3,6 +3,7 @@ import { loadMonorepoEnv } from "./load-env.js";
 loadMonorepoEnv();
 
 import Fastify from "fastify";
+import type { ReasoningLevel } from "@relay/providers";
 import { createGeminiProvider } from "@relay/providers";
 import {
   createLocalDurableExecutor,
@@ -29,6 +30,24 @@ import {
 
 const PORT = Number(process.env.RELAY_PORT ?? 4310);
 const DB_PATH = process.env.RELAY_DB_PATH ?? "./data/relay.db";
+
+const REASONING_LEVELS = new Set<ReasoningLevel>([
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "none",
+  "provider-default",
+]);
+
+function parseGeminiReasoning(value: string | undefined): ReasoningLevel | undefined {
+  if (!value) return undefined;
+  if (REASONING_LEVELS.has(value as ReasoningLevel)) {
+    return value as ReasoningLevel;
+  }
+  console.warn(`Ignoring invalid GEMINI_REASONING value: ${value}`);
+  return undefined;
+}
 
 function replySessionActionError(
   reply: { status: (code: number) => { send: (body: unknown) => unknown } },
@@ -82,9 +101,12 @@ async function main() {
       ? process.env.GEMINI_MODEL
       : DEFAULT_GEMINI_MODEL;
 
+  const geminiReasoning = parseGeminiReasoning(process.env.GEMINI_REASONING);
+
   const provider = createGeminiProvider({
     apiKey,
     model: defaultModel,
+    ...(geminiReasoning !== undefined ? { reasoning: geminiReasoning } : {}),
   });
   const livePublisher = createLocalLiveEventPublisher();
   let runtime: ReturnType<typeof createRuntime>;

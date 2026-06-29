@@ -20,6 +20,8 @@ Relay owns agent loop state, streams events to observers, and persists an append
 
 **Seams** — see [What is a seam?](#what-is-a-seam) below. Interfaces live in `@relay/types/seams` and `@relay/types/storage`; local adapters in `@relay/runtime/seams/local` and `@relay/storage`.
 
+**Provider boundary:** [`@relay/providers`](../packages/providers) uses AI SDK v7 as the Gemini transport adapter only. Relay owns the ReAct loop, tool execution, and event log — not `ToolLoopAgent`, `WorkflowAgent`, or SDK harness APIs. Product observability flows through `usage.updated` events, not OpenTelemetry spans.
+
 ## What is a seam?
 
 A **seam** is a boundary where one part of the system ends and another begins — defined by an **interface**, not a concrete implementation. The runtime depends on `EventSink.write()`, not on SQLite. The server depends on `DurableExecutor.execute()`, not on whether the loop runs in-process or on a remote worker.

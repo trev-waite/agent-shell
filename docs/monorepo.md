@@ -7,7 +7,7 @@ apps/
 
 packages/
   runtime/       ← execution engine + seams/local adapters (no HTTP)
-  providers/     ← Gemini LLM adapter
+  providers/     ← Gemini LLM adapter (AI SDK v7 transport)
   storage/       ← bun:sqlite store + local EventSink adapter
   tools/         ← file.read, shell.exec implementations
   tool-registry/ ← tool abstraction layer

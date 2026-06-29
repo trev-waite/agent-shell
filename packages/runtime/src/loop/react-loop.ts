@@ -1,6 +1,6 @@
 import { ulid } from "ulid";
 import type { ExecutionLoop, EventHandler } from "@relay/types";
-import type { LLMProvider, Message } from "@relay/providers";
+import type { LLMProvider, Message, StreamResult } from "@relay/providers";
 import type { ToolRegistry } from "@relay/tool-registry";
 import { sanitize, sanitizeObject } from "../sanitize.js";
 
@@ -90,7 +90,7 @@ export class ReActLoop implements ExecutionLoop {
         });
 
         assistantContent = result.text || assistantContent;
-        emitCostDelta(emit, sessionId, result.inputTokens, result.outputTokens);
+        emitUsageUpdated(emit, sessionId, result);
 
         if (result.toolCalls.length === 0) {
           this.messages.push({ role: "assistant", content: sanitize(assistantContent) });
@@ -108,6 +108,7 @@ export class ReActLoop implements ExecutionLoop {
           });
 
           this.saveCheckpoint(emit, iterations);
+          emitSessionCompleted(emit, sessionId, iterations);
           return;
         }
 
@@ -353,24 +354,54 @@ function roundCost(value: number): number {
   return Math.round(value * 1_000_000) / 1_000_000;
 }
 
-function emitCostDelta(
+function emitUsageUpdated(
   emit: EventHandler,
   sessionId: string,
-  inputTokens: number,
-  outputTokens: number,
+  result: StreamResult,
 ): void {
+  const { inputTokens, outputTokens } = result;
   if (inputTokens === 0 && outputTokens === 0) return;
 
+  const performance = result.performance;
   emit({
     id: ulid(),
     sessionId,
-    type: "cost.updated",
+    type: "usage.updated",
     timestamp: Date.now(),
     payload: {
       inputTokens,
       outputTokens,
       totalCost: estimateCost(inputTokens, outputTokens),
       currency: "USD",
+      ...(result.cachedInputTokens !== undefined
+        ? { cachedInputTokens: result.cachedInputTokens }
+        : {}),
+      ...(result.reasoningTokens !== undefined
+        ? { reasoningTokens: result.reasoningTokens }
+        : {}),
+      ...(performance?.responseTimeMs !== undefined
+        ? { responseTimeMs: performance.responseTimeMs }
+        : {}),
+      ...(performance?.timeToFirstOutputMs !== undefined
+        ? { timeToFirstOutputMs: performance.timeToFirstOutputMs }
+        : {}),
+      ...(performance?.outputTokensPerSecond !== undefined
+        ? { outputTokensPerSecond: performance.outputTokensPerSecond }
+        : {}),
     },
+  });
+}
+
+function emitSessionCompleted(
+  emit: EventHandler,
+  sessionId: string,
+  iteration: number,
+): void {
+  emit({
+    id: ulid(),
+    sessionId,
+    type: "session.completed",
+    timestamp: Date.now(),
+    payload: { iteration },
   });
 }
