@@ -319,7 +319,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
   },
   {
     id: "toggle-session-overlay-ctrl",
-    match: (input, key) => ctrlKey(input, key, "s"),
+    match: (input, key) => ctrlKey(input, key, "p"),
     when: (ctx) => !overlayIs(ctx, "model") && !overlayIs(ctx, "slash"),
     run: (_input, _ctx, dispatch) => {
       dispatch({ type: "TOGGLE_OVERLAY", panel: "session" });

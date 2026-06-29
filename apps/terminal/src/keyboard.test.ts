@@ -140,14 +140,14 @@ describe("handleKey overlays", () => {
     expect(actions).toEqual([{ type: "SET_INPUT", input: "s" }]);
   });
 
-  test("Ctrl+S toggles session overlay", () => {
+  test("Ctrl+P toggles session overlay", () => {
     const actions: string[] = [];
     const dispatch = (action: { type: string }) => {
       actions.push(action.type);
     };
 
     handleKey(
-      "s",
+      "p",
       { ctrl: true } as never,
       ctx({ input: "draft message" }),
       dispatch,

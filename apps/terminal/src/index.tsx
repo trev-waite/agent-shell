@@ -25,7 +25,6 @@ import {
   type UIState,
 } from "./state.js";
 import { isSessionBusy } from "./stateHelpers.js";
-import { disableTerminalFlowControl } from "./utils/tty.js";
 
 const client = createClient();
 
@@ -328,5 +327,4 @@ function TerminalApp() {
   );
 }
 
-disableTerminalFlowControl();
 render(<TerminalApp />, { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr });
