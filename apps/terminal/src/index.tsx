@@ -265,6 +265,7 @@ function TerminalApp() {
     layout,
     maxRows,
     state.showScrollbar,
+    state.chatScroll,
   );
 
   useEffect(() => {
@@ -281,6 +282,7 @@ function TerminalApp() {
       layout,
       rows,
       current.showScrollbar,
+      current.chatScroll,
     );
     const result = handleKey(
       input,

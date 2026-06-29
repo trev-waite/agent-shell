@@ -213,6 +213,26 @@ describe("uiReducer UI actions", () => {
     expect(closed.activeOverlay).toBe("none");
   });
 
+  test("CLAMP_SCROLL preserves manual scroll near bottom during content growth", () => {
+    const detached = {
+      ...initialState,
+      chatScroll: { followTail: false, offsetFromBottom: 1 },
+    };
+
+    const next = uiReducer(detached, { type: "CLAMP_SCROLL", maxOffset: 100 });
+    expect(next.chatScroll).toEqual({ followTail: false, offsetFromBottom: 1 });
+  });
+
+  test("SCROLL_BY near bottom re-enables follow", () => {
+    const detached = {
+      ...initialState,
+      chatScroll: { followTail: false, offsetFromBottom: 2 },
+    };
+
+    const next = uiReducer(detached, { type: "SCROLL_BY", delta: 1, maxOffset: 50 });
+    expect(next.chatScroll.followTail).toBe(true);
+  });
+
   test("SET_SESSION resets conversation on new session id", () => {
     const withMessages = {
       ...initialState,

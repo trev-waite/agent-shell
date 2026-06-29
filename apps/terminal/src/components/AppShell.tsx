@@ -34,6 +34,7 @@ export function AppShell({ state, layout }: AppShellProps) {
     layout,
     chatMaxRows,
     state.showScrollbar,
+    state.chatScroll,
   );
 
   return (

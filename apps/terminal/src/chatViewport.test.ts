@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { ChatMessage } from "./state.js";
 import { initialChatScroll } from "./state.js";
 import {
+  DETACHED_HISTORY_BANNER_ROWS,
   buildContentLedger,
   buildChatViewModel,
   clampScrollOffset,
@@ -110,6 +111,23 @@ describe("chatViewport", () => {
     });
     expect(scrolledView.viewport.startIndex).toBeLessThan(tailView.viewport.startIndex);
     expect(scrolledView.viewport.hiddenMessageCount).toBe(0);
+  });
+
+  test("detached banner reserves rows from content budget", () => {
+    const messages: ChatMessage[] = [
+      msg({ id: "1", role: "user", content: "first", timestamp: 1 }),
+      msg({ id: "2", role: "assistant", content: "y".repeat(800), timestamp: 2 }),
+      msg({ id: "3", role: "user", content: "last", timestamp: 3 }),
+    ];
+    const maxRows = 10;
+    const tailView = buildChatViewModel(messages, [], null, layout, maxRows, initialChatScroll);
+    const scrolledView = buildChatViewModel(messages, [], null, layout, maxRows, {
+      followTail: false,
+      offsetFromBottom: Math.max(2, Math.floor(tailView.maxScrollOffset / 2)),
+    });
+
+    expect(scrolledView.viewport.hiddenMessageCount).toBeGreaterThan(0);
+    expect(scrolledView.viewport.maxRows).toBe(maxRows - DETACHED_HISTORY_BANNER_ROWS);
   });
 
   test("clampScrollOffset stays within bounds", () => {

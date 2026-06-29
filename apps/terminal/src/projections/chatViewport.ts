@@ -14,6 +14,8 @@ const FOOTER_MARGIN_ROWS = 1;
 const CHAT_MARGIN_ROWS = 1;
 const NOTICE_ROWS = 2;
 const OVERLAY_ESTIMATE_ROWS = 8;
+/** Text line + margin below the detached-history banner in ChatPanel. */
+export const DETACHED_HISTORY_BANNER_ROWS = 2;
 
 export interface ChatChromeOptions {
   serverOffline: boolean;
@@ -190,19 +192,70 @@ export function deriveScrollContext(
   layout: LayoutConfig,
   maxRows: number,
   showScrollbar: boolean,
+  scroll: ChatScrollState,
 ): { maxRows: number; maxScrollOffset: number } {
   const contentColumns = showScrollbar ? layout.columns - 1 : layout.columns;
-  return {
+  const lastUserIndex = lastUserMessageIndex(messages);
+  const showActivity = shouldShowActivity(messages, activity);
+  const ledger = buildContentLedger(
+    messages,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  const contentMaxRows = resolveContentMaxRows(
+    messages,
+    ledger,
     maxRows,
-    maxScrollOffset: computeMaxScrollOffset(
-      messages,
-      traces,
-      activity,
-      layout,
-      maxRows,
-      contentColumns,
-    ),
+    scroll,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  return {
+    maxRows: contentMaxRows,
+    maxScrollOffset: Math.max(0, ledger.totalRows - contentMaxRows),
   };
+}
+
+function resolveContentMaxRows(
+  messages: ChatMessage[],
+  ledger: ContentLedger,
+  maxRows: number,
+  scroll: ChatScrollState,
+  contentColumns: number,
+  traces: ToolTrace[],
+  activity: ActivityStatus | null,
+  layout: LayoutConfig,
+  lastUserIndex: number,
+  showActivity: boolean,
+): number {
+  if (scroll.followTail) {
+    return maxRows;
+  }
+  const scrollTop = computeScrollTop(ledger.totalRows, maxRows, scroll);
+  const peek = selectChatViewportFromScrollTop(
+    messages,
+    ledger,
+    scrollTop,
+    maxRows,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  if (peek.hiddenMessageCount > 0) {
+    return Math.max(1, maxRows - DETACHED_HISTORY_BANNER_ROWS);
+  }
+  return maxRows;
 }
 
 export function buildChatViewModel(
@@ -225,13 +278,25 @@ export function buildChatViewModel(
     lastUserIndex,
     showActivity,
   );
-  const maxScrollOffset = Math.max(0, ledger.totalRows - maxRows);
-  const scrollTop = computeScrollTop(ledger.totalRows, maxRows, scroll);
+  const contentMaxRows = resolveContentMaxRows(
+    messages,
+    ledger,
+    maxRows,
+    scroll,
+    contentColumns,
+    traces,
+    activity,
+    layout,
+    lastUserIndex,
+    showActivity,
+  );
+  const maxScrollOffset = Math.max(0, ledger.totalRows - contentMaxRows);
+  const scrollTop = computeScrollTop(ledger.totalRows, contentMaxRows, scroll);
   const viewport = selectChatViewportFromScrollTop(
     messages,
     ledger,
     scrollTop,
-    maxRows,
+    contentMaxRows,
     contentColumns,
     traces,
     activity,
@@ -248,7 +313,7 @@ export function buildChatViewModel(
     lastUserIndex,
     showActivity,
     hasConversation: messages.length > 0 || showActivity,
-    scrollbar: computeScrollbarMetrics(ledger.totalRows, maxRows, scrollTop),
+    scrollbar: computeScrollbarMetrics(ledger.totalRows, contentMaxRows, scrollTop),
     maxScrollOffset,
   };
 }

@@ -100,7 +100,7 @@ export function ChatPanel({
             ) : null}
           </Box>
           {showScrollbar ? (
-            <ChatScrollbar metrics={view.scrollbar} height={maxRows} />
+            <ChatScrollbar metrics={view.scrollbar} height={view.viewport.maxRows} />
           ) : null}
         </Box>
       )}

@@ -199,14 +199,16 @@ function clampManualScroll(
   scroll: ChatScrollState,
   maxOffset: number,
 ): ChatScrollState {
-  if (scroll.followTail || maxOffset <= 0) {
+  if (maxOffset <= 0) {
     return initialChatScroll;
   }
-  const offset = Math.max(0, Math.min(maxOffset, scroll.offsetFromBottom));
-  if (offset <= 1) {
-    return initialChatScroll;
+  if (scroll.followTail) {
+    return scroll;
   }
-  return { followTail: false, offsetFromBottom: offset };
+  return {
+    followTail: false,
+    offsetFromBottom: Math.max(0, Math.min(maxOffset, scroll.offsetFromBottom)),
+  };
 }
 
 function focusableIds(state: UIState): string[] {
