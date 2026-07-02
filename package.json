@@ -11,7 +11,7 @@
     "typecheck": "turbo run typecheck",
     "db:generate": "bun run --bun drizzle-kit generate --config packages/storage/drizzle.config.ts",
     "db:migrate": "bun run --bun drizzle-kit migrate --config packages/storage/drizzle.config.ts",
-    "test": "bun test packages/storage/src packages/runtime/src packages/providers/src apps/terminal/src apps/server/src"
+    "test": "bun test packages/storage/src packages/runtime/src packages/providers/src apps/terminal/src apps/server/src apps/web/src"
   },
   "devDependencies": {
     "@types/bun": "latest",
