@@ -3,6 +3,7 @@ import { loadMonorepoEnv } from "./load-env.js";
 loadMonorepoEnv();
 
 import Fastify from "fastify";
+import fastifyCors from "@fastify/cors";
 import type { ReasoningLevel } from "@relay/providers";
 import { createGeminiProvider } from "@relay/providers";
 import {
@@ -22,6 +23,7 @@ import {
 import { createToolRegistry } from "@relay/tool-registry";
 import { registerTools } from "@relay/tools";
 import type { RelayEvent } from "@relay/types";
+import { corsOriginHeaders, resolveCorsOrigin } from "./cors.js";
 import {
   DEFAULT_GEMINI_MODEL,
   isGeminiModelId,
@@ -134,6 +136,20 @@ async function main() {
 
   const app = Fastify({ logger: true });
 
+  // Browser clients (apps/web dev server) run on a different origin.
+  await app.register(fastifyCors, {
+    origin: (origin, callback) => {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      callback(null, resolveCorsOrigin(origin) !== null);
+    },
+    methods: ["GET", "POST", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Accept", "Last-Event-ID"],
+    exposedHeaders: ["Last-Event-ID"],
+  });
+
   app.get("/health", async () => ({ status: "ok" }));
 
   app.get("/models", async () => ({
@@ -202,6 +218,7 @@ async function main() {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        ...corsOriginHeaders(request.headers.origin),
       });
 
       const sentIds = new Set<string>();
@@ -246,6 +263,7 @@ async function main() {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
+        ...corsOriginHeaders(request.headers.origin),
       });
 
       for await (const event of runtime.replay({ sessionId })) {

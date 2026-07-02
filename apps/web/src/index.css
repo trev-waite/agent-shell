@@ -1,0 +1,10 @@
+/*
+ * Style entry point. Layer order is declared once here so specificity stays
+ * predictable as files grow: tokens < base < components.
+ */
+
+@layer tokens, base, components;
+
+@import "./styles/tokens.css";
+@import "./styles/base.css";
+@import "./styles/components.css";

@@ -1,0 +1,94 @@
+/*
+ * Design tokens — the single source of truth for color, space, radius, motion.
+ * Components must only reference these custom properties, never raw values.
+ * Theme switching happens here alone: html.theme-dark overrides the same tokens.
+ */
+
+@layer tokens {
+  :root {
+    /* Surfaces: pure white / pure black dominate (Liquid Glass samples these) */
+    --surface-page: #ffffff;
+    --surface-raised: #ffffff;
+    /* Chrome controls (pill, session drawer) — same as raised in light mode */
+    --surface-chrome: #ffffff;
+    --surface-veil: rgba(255, 255, 255, 0.82);
+    --surface-inset: rgba(10, 10, 10, 0.06);
+
+    /* Text tiers */
+    --text-primary: #0a0a0a;
+    --text-secondary: rgba(10, 10, 10, 0.55);
+    --text-ambient: rgba(10, 10, 10, 0.16);
+    --thinking-shine: rgba(255, 255, 255, 0.55);
+
+    /* Lines and shadows */
+    --line-soft: rgba(10, 10, 10, 0.1);
+    --outline-chrome: transparent;
+    --shadow-elevated: 0 2px 6px rgba(10, 10, 10, 0.05), 0 10px 28px rgba(10, 10, 10, 0.12);
+    --shadow-drawer: 4px 0 16px rgba(10, 10, 10, 0.06), 12px 0 40px rgba(10, 10, 10, 0.1);
+    --shadow-pill: 0 2px 14px rgba(10, 10, 10, 0.08), 0 0 0 1px var(--line-soft);
+    --shadow-panel: 0 12px 40px rgba(10, 10, 10, 0.14), 0 0 0 1px var(--line-soft);
+
+    /* The one accent: friendly blue, reserved for animation and focus */
+    --accent: #00b2ff;
+    --accent-soft: rgba(0, 178, 255, 0.14);
+    --sphere-front: #00b2ff;
+    --orb-color: rgba(10, 10, 10, 0.55);
+
+    /* Radii */
+    --radius-pill: 999px;
+    --radius-panel: 24px;
+    --radius-message: 22px;
+
+    /* Spacing scale */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    /* Safe-area composites (viewport-fit=cover extends into the insets) */
+    --inset-top: calc(env(safe-area-inset-top, 0px) + var(--space-4));
+    --inset-bottom: calc(env(safe-area-inset-bottom, 0px) + var(--space-4));
+    --inset-left: calc(env(safe-area-inset-left, 0px) + var(--space-4));
+    --inset-right: calc(env(safe-area-inset-right, 0px) + var(--space-4));
+
+    /* Motion */
+    --duration-fast: 160ms;
+    --duration-med: 320ms;
+    --ease-organic: cubic-bezier(0.32, 0.72, 0.24, 1);
+
+    /* Layout */
+    --content-max: 640px;
+
+    color-scheme: light;
+  }
+
+  html.theme-dark {
+    --surface-page: #000000;
+    /* Input pill, dock, and side drawers — near-black chrome */
+    --surface-chrome: #000000;
+    --surface-raised: #0a0a0a;
+    --surface-veil: rgba(0, 0, 0, 0.78);
+    --surface-inset: rgba(255, 255, 255, 0.06);
+
+    --text-primary: #f5f5f5;
+    --text-secondary: rgba(245, 245, 245, 0.55);
+    --text-ambient: rgba(245, 245, 245, 0.18);
+    --thinking-shine: rgba(255, 255, 255, 0.12);
+
+    --line-soft: rgba(245, 245, 245, 0.16);
+    --outline-chrome: rgba(255, 255, 255, 0.2);
+    --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.55), 0 12px 36px rgba(0, 0, 0, 0.65);
+    --shadow-drawer: 6px 0 20px rgba(0, 0, 0, 0.5), 16px 0 48px rgba(0, 0, 0, 0.6);
+    --shadow-pill: 0 2px 14px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line-soft);
+    --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--line-soft);
+
+    --accent-soft: rgba(0, 178, 255, 0.2);
+    --sphere-front: #ffffff;
+    --orb-color: #ffffff;
+
+    color-scheme: dark;
+  }
+}

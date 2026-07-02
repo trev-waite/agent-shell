@@ -1,4 +1,4 @@
-import type { RelayEvent } from "@relay/types";
+import type { RelayEvent, Session } from "@relay/types";
 
 export interface RelayClientOptions {
   baseUrl?: string;
@@ -56,6 +56,7 @@ export interface RerunOptions {
 export interface RelayClient {
   send(opts: SendOptions): Promise<{ sessionId: string }>;
   listModels(): Promise<ModelsResponse>;
+  listSessions(): Promise<Session[]>;
   listCheckpoints(sessionId: string): Promise<{ checkpoints: CheckpointInfo[] }>;
   rerun(opts: RerunOptions): Promise<{ sessionId: string }>;
   cancel(sessionId: string): Promise<void>;
@@ -97,6 +98,14 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
         throw new Error(`Failed to list models: ${response.status}`);
       }
       return response.json() as Promise<ModelsResponse>;
+    },
+
+    async listSessions(): Promise<Session[]> {
+      const response = await fetch(`${baseUrl}/sessions`);
+      if (!response.ok) {
+        throw new Error(`Failed to list sessions: ${response.status}`);
+      }
+      return response.json() as Promise<Session[]>;
     },
 
     async listCheckpoints(sessionId: string): Promise<{ checkpoints: CheckpointInfo[] }> {

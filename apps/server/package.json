@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/cors": "^11.2.0",
     "@relay/providers": "workspace:*",
     "@relay/runtime": "workspace:*",
     "@relay/storage": "workspace:*",
