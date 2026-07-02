@@ -7,10 +7,11 @@
     "dev": "turbo run dev",
     "dev:server": "bun --env-file=.env run --watch apps/server/src/index.ts",
     "dev:terminal": "bun --watch apps/terminal/src/index.tsx",
+    "dev:web": "bun --cwd apps/web dev",
     "typecheck": "turbo run typecheck",
     "db:generate": "bun run --bun drizzle-kit generate --config packages/storage/drizzle.config.ts",
     "db:migrate": "bun run --bun drizzle-kit migrate --config packages/storage/drizzle.config.ts",
-    "test": "bun test packages/storage/src packages/runtime/src packages/providers/src apps/terminal/src"
+    "test": "bun test packages/storage/src packages/runtime/src packages/providers/src apps/terminal/src apps/server/src apps/web/src"
   },
   "devDependencies": {
     "@types/bun": "latest",

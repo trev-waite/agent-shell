@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- viewport-fit=cover is required for Safari 26 Liquid Glass bottom-bar transparency -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- theme-color is ignored by Safari 26 (Liquid Glass samples CSS instead) but kept for older browsers -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
+    <title>Relay</title>
+    <script>
+      // No-flash theme bootstrap: apply stored override (or system) before first paint.
+      (function () {
+        try {
+          var pref = localStorage.getItem("relay-theme");
+          var dark =
+            pref === "dark" ||
+            (pref !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          document.documentElement.classList.toggle("theme-dark", dark);
+          document.documentElement.classList.toggle("theme-light", !dark);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./frontend.tsx"></script>
+  </body>
+</html>

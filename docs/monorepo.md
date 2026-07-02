@@ -3,6 +3,7 @@
 ```
 apps/
   terminal/      ← Ink 7 CLI UI (depends only on @relay/sdk)
+  web/           ← Browser React UI (depends only on @relay/sdk)
   server/        ← Fastify runtime server
 
 packages/

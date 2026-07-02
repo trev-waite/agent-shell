@@ -1,0 +1,72 @@
+/*
+ * Base layer — resets, typography, and the document-level Safari 26
+ * Liquid Glass rules. These are set once here; components never repeat them.
+ *
+ * Liquid Glass rules encoded in this file:
+ *  - html and body always declare an explicit background-color (never
+ *    transparent): Safari samples it as the toolbar tint fallback.
+ *  - html stays scrollable; we never set body { overflow: hidden }. The
+ *    scrollable conversation lives inside the 100dvh app shell instead.
+ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    min-height: 100%;
+    overscroll-behavior: none;
+    background-color: var(--surface-page);
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--surface-page);
+    color: var(--text-primary);
+    font-family:
+      system-ui,
+      -apple-system,
+      "Helvetica Neue",
+      sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  button,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
