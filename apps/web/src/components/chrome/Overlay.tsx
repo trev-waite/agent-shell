@@ -9,37 +9,30 @@ import { AnimatePresence, motion } from "motion/react";
  * tree at all. AnimatePresence fully unmounts children when `open` is false —
  * the React equivalent of `display: none`.
  *
- * The backdrop deliberately avoids `backdrop-filter` (it can't reach the iOS
- * keyboard accessory gap anyway). Instead, while open, the element with
- * [data-app-content] gets `filter: blur()` applied at the source, which does
- * carry through to Safari's keyboard-gap rendering.
- *
- * See apps/web/docs/SAFARI_CHROME.md.
+ * `layer="behind"` renders drawers beneath the elevated main surface instead
+ * of sliding over it. See apps/web/docs/SAFARI_CHROME.md.
  */
 export function Overlay({
   open,
   onClose,
   panelClassName,
+  backdropClassName,
   origin = "center",
   label,
+  layer = "front",
   children,
 }: {
   open: boolean;
   onClose: () => void;
   panelClassName: string;
+  backdropClassName?: string;
   /** Transform style for the organic expand animation. */
   origin?: "center" | "top-right" | "left" | "right";
   label: string;
+  /** Behind-layer drawers sit under the elevated main page card. */
+  layer?: "front" | "behind";
   children: ReactNode;
 }) {
-  useEffect(() => {
-    const content = document.querySelector("[data-app-content]");
-    if (content) content.classList.toggle("content-blurred", open);
-    return () => {
-      if (content) content.classList.remove("content-blurred");
-    };
-  }, [open]);
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -48,6 +41,11 @@ export function Overlay({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  const panelTransition =
+    layer === "behind"
+      ? { duration: 0.32, ease: [0.32, 0.72, 0.24, 1] as const }
+      : { type: "spring" as const, stiffness: 380, damping: 32 };
 
   const panelMotion =
     origin === "left"
@@ -76,21 +74,34 @@ export function Overlay({
     <AnimatePresence>
       {open && (
         <>
+          {layer !== "behind" && (
+            <motion.div
+              className={[
+                "overlay-backdrop",
+                backdropClassName,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22, ease: [0.32, 0.72, 0.24, 1] }}
+              onClick={onClose}
+            />
+          )}
           <motion.div
-            className="overlay-backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.18 }}
-            onClick={onClose}
-          />
-          <motion.div
-            className={`overlay-panel ${panelClassName}`}
+            className={[
+              "overlay-panel",
+              panelClassName,
+              layer === "behind" ? "overlay-panel-behind" : undefined,
+            ]
+              .filter(Boolean)
+              .join(" ")}
             role="dialog"
             aria-modal="true"
             aria-label={label}
             {...panelMotion}
-            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+            transition={panelTransition}
           >
             {children}
           </motion.div>

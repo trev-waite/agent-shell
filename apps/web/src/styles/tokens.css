@@ -13,6 +13,8 @@
     --surface-chrome: #ffffff;
     --surface-veil: rgba(255, 255, 255, 0.82);
     --surface-inset: rgba(10, 10, 10, 0.06);
+    /* Opaque recessed chrome — side drawers and shell backdrop when open */
+    --surface-drawer: #f0f0f0;
 
     /* Text tiers */
     --text-primary: #0a0a0a;
@@ -24,7 +26,8 @@
     --line-soft: rgba(10, 10, 10, 0.1);
     --outline-chrome: transparent;
     --shadow-elevated: 0 2px 6px rgba(10, 10, 10, 0.05), 0 10px 28px rgba(10, 10, 10, 0.12);
-    --shadow-drawer: 4px 0 16px rgba(10, 10, 10, 0.06), 12px 0 40px rgba(10, 10, 10, 0.1);
+    --shadow-content-elevated: 0 4px 12px rgba(10, 10, 10, 0.06), 0 16px 48px rgba(10, 10, 10, 0.14);
+    --shadow-drawer: none;
     --shadow-pill: 0 2px 14px rgba(10, 10, 10, 0.08), 0 0 0 1px var(--line-soft);
     --shadow-panel: 0 12px 40px rgba(10, 10, 10, 0.14), 0 0 0 1px var(--line-soft);
 
@@ -36,8 +39,10 @@
 
     /* Radii */
     --radius-pill: 999px;
-    --radius-panel: 24px;
-    --radius-message: 22px;
+    --radius-panel: 16px;
+    --radius-content-elevated: 32px;
+    --radius-message: 10px;
+    --radius-row: 8px;
 
     /* Spacing scale */
     --space-1: 4px;
@@ -61,6 +66,13 @@
 
     /* Layout */
     --content-max: 640px;
+    --drawer-width: min(82vw, 272px);
+    --edge-handle-inset: var(--space-4);
+    --edge-handle-top: calc(var(--inset-top) + var(--space-1));
+    --edge-handle-width: 20px;
+    --conversation-back-inset: calc(
+      var(--edge-handle-inset) + var(--edge-handle-width) + var(--space-4)
+    );
 
     color-scheme: light;
   }
@@ -72,6 +84,7 @@
     --surface-raised: #0a0a0a;
     --surface-veil: rgba(0, 0, 0, 0.78);
     --surface-inset: rgba(255, 255, 255, 0.06);
+    --surface-drawer: #161616;
 
     --text-primary: #f5f5f5;
     --text-secondary: rgba(245, 245, 245, 0.55);
@@ -81,7 +94,8 @@
     --line-soft: rgba(245, 245, 245, 0.16);
     --outline-chrome: rgba(255, 255, 255, 0.2);
     --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.55), 0 12px 36px rgba(0, 0, 0, 0.65);
-    --shadow-drawer: 6px 0 20px rgba(0, 0, 0, 0.5), 16px 0 48px rgba(0, 0, 0, 0.6);
+    --shadow-content-elevated: 0 6px 20px rgba(0, 0, 0, 0.5), 0 20px 56px rgba(0, 0, 0, 0.7);
+    --shadow-drawer: none;
     --shadow-pill: 0 2px 14px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--line-soft);
     --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--line-soft);
 

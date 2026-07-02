@@ -1,13 +1,12 @@
 import type { ModelsResponse } from "@relay/sdk";
 import type { ThemePreference } from "../theme";
 import { Overlay } from "./chrome/Overlay";
-import { useSidePanels } from "../hooks/useSidePanels";
 import { SessionsPanel } from "./panels/SessionsPanel";
 import { SettingsPanel } from "./panels/SettingsPanel";
 
 /**
  * Symmetric edge drawers: sessions on the left, settings on the right.
- * Tap the edge handles or swipe from the screen edge on mobile.
+ * Drawers sit behind the elevated main surface; tap handles or swipe to open.
  */
 export function EdgePanels({
   currentSessionId,
@@ -19,6 +18,9 @@ export function EdgePanels({
   onSelectSession,
   onSelectAgent,
   sessionsRefreshKey = 0,
+  close,
+  sessionsOpen,
+  settingsOpen,
 }: {
   currentSessionId: string | null;
   activeModelId: string;
@@ -29,38 +31,19 @@ export function EdgePanels({
   onSelectSession: (sessionId: string, prompt?: string) => void;
   onSelectAgent: (modelId: string) => void;
   sessionsRefreshKey?: number;
+  close: () => void;
+  sessionsOpen: boolean;
+  settingsOpen: boolean;
 }) {
-  const {
-    sessionsOpen,
-    settingsOpen,
-    close,
-    toggleSessions,
-    toggleSettings,
-  } = useSidePanels();
-
   return (
     <>
-      <button
-        type="button"
-        className="edge-handle edge-handle-left"
-        aria-label="Sessions"
-        aria-expanded={sessionsOpen}
-        onClick={toggleSessions}
-      />
-      <button
-        type="button"
-        className="edge-handle edge-handle-right"
-        aria-label="Settings"
-        aria-expanded={settingsOpen}
-        onClick={toggleSettings}
-      />
-
       <Overlay
         open={sessionsOpen}
         onClose={close}
         panelClassName="panel-drawer panel-drawer-left"
         origin="left"
         label="Sessions"
+        layer="behind"
       >
         <SessionsPanel
           currentSessionId={currentSessionId}
@@ -81,6 +64,7 @@ export function EdgePanels({
         panelClassName="panel-drawer panel-drawer-right"
         origin="right"
         label="Settings"
+        layer="behind"
       >
         <SettingsPanel
           themePreference={themePreference}
