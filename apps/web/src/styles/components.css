@@ -16,6 +16,12 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    background-color: var(--surface-page);
+    transition: background-color var(--duration-med) var(--ease-organic);
+  }
+
+  .shell:has([data-panel-open]) {
+    background-color: var(--surface-drawer);
   }
 
   .shell-content {
@@ -24,6 +30,58 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
+    transition: transform var(--duration-med) var(--ease-organic);
+  }
+
+  .shell-content-surface {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    transition:
+      box-shadow var(--duration-med) var(--ease-organic),
+      border-radius var(--duration-med) var(--ease-organic),
+      background-color var(--duration-med) var(--ease-organic);
+  }
+
+  .shell-content[data-panel-open] {
+    z-index: 5;
+  }
+
+  .shell-content[data-panel-open] .shell-content-surface {
+    box-shadow: var(--shadow-content-elevated);
+    background-color: var(--surface-page);
+    overflow: hidden;
+  }
+
+  .shell-content[data-panel-open="sessions"] .shell-content-surface {
+    border-top-left-radius: var(--radius-content-elevated);
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  .shell-content[data-panel-open="settings"] .shell-content-surface {
+    border-top-right-radius: var(--radius-content-elevated);
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .shell-content[data-panel-open="sessions"] {
+    transform: translateX(var(--drawer-width));
+  }
+
+  .shell-content[data-panel-open="settings"] {
+    transform: translateX(calc(-1 * var(--drawer-width)));
+  }
+
+  /* Conversation dock — anchored in shell-content so it slides with the main page */
+  .shell-content > .chrome-fixed {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 3;
   }
 
   /* ---------- Idle home stage ---------- */
@@ -60,6 +118,7 @@
 
   .conversation-view {
     overflow: hidden;
+    position: relative;
   }
 
   .composer-stage {
@@ -72,7 +131,7 @@
   /* ---------- Composer pill slot (layoutId morph target) ---------- */
 
   .composer-pill-slot {
-    position: fixed;
+    position: absolute;
     top: calc(50% - 28px);
     left: var(--inset-left);
     right: var(--inset-right);
@@ -88,7 +147,7 @@
   }
 
   .composer-greeting {
-    position: fixed;
+    position: absolute;
     left: 50%;
     transform: translateX(-50%);
     bottom: calc(50% + 28px + var(--space-7) + 2.5rem);
@@ -103,7 +162,7 @@
   }
 
   .composer-messages {
-    position: fixed;
+    position: absolute;
     left: 50%;
     transform: translateX(-50%);
     width: min(88vw, 420px);
@@ -130,6 +189,9 @@
   }
 
   .composer-messages-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
     pointer-events: none;
   }
 
@@ -251,12 +313,11 @@
   }
 
   .conversation-back {
-    position: fixed;
-    z-index: 2;
-    top: calc(var(--inset-top) + var(--space-3));
-    left: calc(var(--inset-left) + var(--space-2));
-    margin: 0;
-    padding: var(--space-2) var(--space-3);
+    flex-shrink: 0;
+    align-self: flex-start;
+    margin: var(--edge-handle-top) var(--inset-right) var(--space-2)
+      var(--conversation-back-inset);
+    padding: var(--space-1) var(--space-2);
     border: none;
     background: none;
     color: var(--text-secondary);
@@ -335,8 +396,8 @@
     overflow-anchor: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: calc(var(--inset-top) + var(--space-6)) var(--inset-left)
-      calc(var(--space-7) * 2.5) var(--inset-right);
+    padding: var(--space-2) var(--inset-left) calc(var(--space-7) * 2.5)
+      var(--inset-right);
   }
 
   .conversation-inner {
@@ -582,15 +643,21 @@
 
   .edge-handle {
     position: absolute;
-    top: var(--inset-top);
-    z-index: 2;
-    width: 28px;
-    height: 56px;
+    top: var(--edge-handle-top);
+    z-index: 10;
+    width: var(--edge-handle-width);
+    height: 36px;
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0.45;
-    transition: opacity var(--duration-fast) var(--ease-organic);
+    cursor: pointer;
+    pointer-events: auto;
+    transition:
+      top var(--duration-med) var(--ease-organic),
+      left var(--duration-med) var(--ease-organic),
+      right var(--duration-med) var(--ease-organic),
+      opacity var(--duration-fast) var(--ease-organic);
   }
 
   .edge-handle:hover,
@@ -599,46 +666,53 @@
   }
 
   .edge-handle-left {
-    left: max(var(--space-1), env(safe-area-inset-left, 0px));
+    left: max(var(--edge-handle-inset), env(safe-area-inset-left, 0px));
   }
 
   .edge-handle-right {
-    right: max(var(--space-1), env(safe-area-inset-right, 0px));
+    right: max(var(--edge-handle-inset), env(safe-area-inset-right, 0px));
+  }
+
+  .shell-content[data-panel-open="sessions"] .edge-handle-left {
+    left: var(--edge-handle-inset);
+  }
+
+  .shell-content[data-panel-open="settings"] .edge-handle-right {
+    right: var(--edge-handle-inset);
   }
 
   .edge-handle::before {
     content: "";
     display: block;
-    width: 3px;
-    height: 32px;
+    width: 2px;
+    height: 20px;
     border-radius: var(--radius-pill);
     background-color: var(--text-secondary);
   }
 
-  /* ---------- Side drawers ---------- */
+  /* ---------- Side drawers (recessed behind main surface) ---------- */
 
   .overlay-panel.panel-drawer {
     top: 0;
     bottom: 0;
-    width: min(88vw, 340px);
+    width: var(--drawer-width);
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    background-color: var(--surface-chrome);
-    border: 1px solid var(--outline-chrome);
-    box-shadow: var(--shadow-drawer);
+    background-color: var(--surface-drawer);
+    border: none;
+  }
+
+  .overlay-panel-behind.panel-drawer {
+    background-color: var(--surface-drawer);
   }
 
   .panel-drawer-left {
     left: 0;
-    border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
-    border-left: none;
   }
 
   .panel-drawer-right {
     right: 0;
-    border-radius: var(--radius-panel) 0 0 var(--radius-panel);
-    border-right: none;
   }
 
   .drawer-body {
@@ -646,48 +720,50 @@
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: calc(var(--inset-top) + var(--space-2)) var(--space-4)
+    padding: calc(var(--inset-top) + var(--space-1)) var(--space-3)
       var(--inset-bottom);
   }
 
   .drawer-header {
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-3);
   }
 
   .drawer-header-compact {
-    margin-bottom: var(--space-3);
+    margin-bottom: var(--space-2);
   }
 
   .drawer-title {
     margin: 0;
-    font-size: 1.35rem;
-    font-weight: 500;
-    letter-spacing: -0.02em;
+    font-size: 0.95rem;
+    font-weight: 400;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
   }
 
   .drawer-lead {
-    margin: var(--space-2) 0 0;
-    font-size: 0.9rem;
-    line-height: 1.45;
+    margin: var(--space-1) 0 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
     color: var(--text-secondary);
   }
 
   .drawer-section {
-    margin-bottom: var(--space-6);
+    margin-bottom: var(--space-4);
   }
 
   .drawer-section-title {
-    margin: 0 0 var(--space-3);
-    font-size: 0.9rem;
+    margin: 0 0 var(--space-2);
+    font-size: 0.78rem;
     font-weight: 500;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
     color: var(--text-secondary);
   }
 
   .drawer-empty {
     margin: 0;
-    padding: var(--space-3) 0;
-    font-size: 0.9rem;
+    padding: var(--space-2) 0;
+    font-size: 0.85rem;
     color: var(--text-secondary);
   }
 
@@ -695,8 +771,8 @@
 
   .agent-carousel {
     position: relative;
-    margin: 0 calc(var(--space-4) * -1) var(--space-4);
-    padding: var(--space-2) var(--space-4) var(--space-3);
+    margin: 0 calc(var(--space-3) * -1) var(--space-3);
+    padding: var(--space-1) var(--space-3) var(--space-2);
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
@@ -732,11 +808,11 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 2px;
-    min-width: 108px;
-    max-width: 148px;
-    padding: var(--space-3);
-    border-radius: var(--radius-message);
+    gap: 1px;
+    min-width: 96px;
+    max-width: 128px;
+    padding: var(--space-2);
+    border-radius: var(--radius-row);
     text-align: left;
     transform: scale(calc(0.9 + var(--proximity) * 0.1));
     opacity: calc(0.58 + var(--proximity) * 0.42);
@@ -757,7 +833,7 @@
   }
 
   .agent-carousel-name {
-    font-size: 0.88rem;
+    font-size: 0.82rem;
     font-weight: 500;
     color: var(--text-primary);
     line-height: 1.25;
@@ -792,10 +868,10 @@
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 4px;
+    gap: 2px;
     width: 100%;
-    padding: var(--space-3);
-    border-radius: var(--radius-message);
+    padding: var(--space-2);
+    border-radius: var(--radius-row);
     text-align: left;
     transition: background-color var(--duration-fast) var(--ease-organic);
   }
@@ -809,25 +885,25 @@
   }
 
   .session-preview {
-    font-size: 0.92rem;
-    line-height: 1.4;
+    font-size: 0.86rem;
+    line-height: 1.35;
     color: var(--text-primary);
   }
 
   .session-when {
-    font-size: 0.78rem;
+    font-size: 0.72rem;
     color: var(--text-secondary);
   }
 
   /* Model picker (settings panel) */
 
   .model-provider + .model-provider {
-    margin-top: var(--space-4);
+    margin-top: var(--space-3);
   }
 
   .model-provider-label {
-    margin: 0 0 var(--space-2);
-    font-size: 0.8rem;
+    margin: 0 0 var(--space-1);
+    font-size: 0.75rem;
     color: var(--text-secondary);
   }
 
@@ -842,9 +918,9 @@
 
   .model-row {
     width: 100%;
-    padding: var(--space-3);
-    border-radius: var(--radius-message);
-    font-size: 0.95rem;
+    padding: var(--space-2);
+    border-radius: var(--radius-row);
+    font-size: 0.88rem;
     text-align: left;
     color: var(--text-primary);
     transition: background-color var(--duration-fast) var(--ease-organic);
@@ -877,20 +953,33 @@
     overflow: hidden;
   }
 
+  /* Behind-layer drawers sit under the elevated main page card */
+  .overlay-backdrop.overlay-drawer-backdrop {
+    z-index: 1;
+    background-color: transparent;
+    pointer-events: none;
+  }
+
+  .overlay-panel.overlay-panel-behind {
+    z-index: 2;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
   /* Segmented control (theme picker) */
   .segmented {
     display: flex;
-    gap: var(--space-1);
-    padding: var(--space-1);
-    border-radius: var(--radius-pill);
-    background-color: var(--accent-soft);
+    gap: 2px;
+    padding: 2px;
+    border-radius: var(--radius-row);
+    background-color: var(--surface-inset);
   }
 
   .segmented-option {
     flex: 1;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-pill);
-    font-size: 0.875rem;
+    padding: var(--space-1) var(--space-2);
+    border-radius: calc(var(--radius-row) - 2px);
+    font-size: 0.8rem;
     color: var(--text-secondary);
     text-align: center;
     transition:
@@ -901,7 +990,7 @@
   .segmented-option[aria-pressed="true"] {
     background-color: var(--surface-raised);
     color: var(--text-primary);
-    box-shadow: var(--shadow-pill);
+    box-shadow: none;
   }
 
   html.theme-dark .panel-drawer .segmented {
@@ -909,13 +998,7 @@
   }
 
   html.theme-dark .panel-drawer .segmented-option[aria-pressed="true"] {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(255, 255, 255, 0.08);
     box-shadow: none;
-  }
-
-  /* Blur-the-source helper for open overlays (iOS keyboard gap fix) */
-  .content-blurred {
-    filter: blur(8px);
-    transition: filter var(--duration-med) var(--ease-organic);
   }
 }

@@ -25,9 +25,8 @@ export function SettingsPanel({
 
   return (
     <div className="drawer-body">
-      <header className="drawer-header">
+      <header className="drawer-header drawer-header-compact">
         <h2 className="drawer-title">Settings</h2>
-        <p className="drawer-lead">Appearance and default agent.</p>
       </header>
 
       <section className="drawer-section">

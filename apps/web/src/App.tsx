@@ -26,6 +26,8 @@ import { Conversation } from "./components/Conversation";
 import { ComposerStage } from "./components/ComposerStage";
 import { ComposerMessageStack } from "./components/ComposerMessageStack";
 import { EdgePanels } from "./components/EdgePanels";
+import { EdgeHandles } from "./components/EdgeHandles";
+import { useSidePanels } from "./hooks/useSidePanels";
 
 const PILL_LAYOUT_ID = "prompt-pill";
 
@@ -149,80 +151,103 @@ export function App() {
       ? state.focusedSessionId
       : (state.turns.find((t) => t.sessionId !== null)?.sessionId ?? null);
 
+  const {
+    panel,
+    close: closePanel,
+    toggleSessions,
+    toggleSettings,
+    sessionsOpen,
+    settingsOpen,
+  } = useSidePanels();
+
   return (
     <LayoutGroup>
       <div className="shell">
-        <div className="shell-content" data-app-content>
-          {isComposer ? (
-            <div className="composer-view">
-              <ComposerStage hasTurns={state.turns.length > 0} />
-            </div>
-          ) : (
-            <div className="conversation-view">
-              <motion.button
-                type="button"
-                className="conversation-back"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={FADE_IN}
-                onClick={handleCloseConversation}
-              >
-                Back
-              </motion.button>
-              {focusedTurn && (
-                <Conversation
-                  key={state.focusedSessionId ?? "pending"}
-                  messages={focusedTurn.messages}
-                  activity={focusedTurn.activity}
-                />
-              )}
-            </div>
-          )}
-        </div>
-
-        <AnimatePresence>
-          {isComposer && state.turns.length > 0 && (
-            <motion.div
-              key="composer-messages"
-              className="composer-messages-layer"
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: FADE_IN.ease }}
-            >
-              <ComposerMessageStack
-                turns={state.turns}
-                onOpen={handleOpenConversation}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {isComposer ? (
-          <div className="composer-pill-slot">
-            <PromptPill
-              layoutId={PILL_LAYOUT_ID}
-              onSubmit={handleComposerSend}
-              busy={composerBusy}
-              blockWhileBusy={false}
-              autoFocus
-              layoutTransition={PILL_SPRING}
-            />
+        <div
+          className="shell-content"
+          data-app-content
+          data-panel-open={panel !== "none" ? panel : undefined}
+        >
+          <EdgeHandles
+            sessionsOpen={sessionsOpen}
+            settingsOpen={settingsOpen}
+            onToggleSessions={toggleSessions}
+            onToggleSettings={toggleSettings}
+          />
+          <div className="shell-content-surface">
+            {isComposer ? (
+              <div className="composer-view">
+                <ComposerStage hasTurns={state.turns.length > 0} />
+              </div>
+            ) : (
+              <div className="conversation-view">
+                <motion.button
+                  type="button"
+                  className="conversation-back"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={FADE_IN}
+                  onClick={handleCloseConversation}
+                >
+                  Back
+                </motion.button>
+                {focusedTurn && (
+                  <Conversation
+                    key={state.focusedSessionId ?? "pending"}
+                    messages={focusedTurn.messages}
+                    activity={focusedTurn.activity}
+                  />
+                )}
+              </div>
+            )}
           </div>
-        ) : (
-          <ChromeSafeFixed
-            edge="bottom"
-            surface={<div className="dock-veil" />}
-          >
-            <div className="dock-row">
+
+          <AnimatePresence>
+            {isComposer && state.turns.length > 0 && (
+              <motion.div
+                key="composer-messages"
+                className="composer-messages-layer"
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: FADE_IN.ease }}
+              >
+                <ComposerMessageStack
+                  turns={state.turns}
+                  onOpen={handleOpenConversation}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {isComposer && (
+            <div className="composer-pill-slot">
               <PromptPill
                 layoutId={PILL_LAYOUT_ID}
-                onSubmit={handleConversationSend}
-                busy={conversationBusy}
+                onSubmit={handleComposerSend}
+                busy={composerBusy}
+                blockWhileBusy={false}
                 autoFocus
                 layoutTransition={PILL_SPRING}
               />
             </div>
-          </ChromeSafeFixed>
-        )}
+          )}
+
+          {!isComposer && (
+            <ChromeSafeFixed
+              edge="bottom"
+              surface={<div className="dock-veil" />}
+            >
+              <div className="dock-row">
+                <PromptPill
+                  layoutId={PILL_LAYOUT_ID}
+                  onSubmit={handleConversationSend}
+                  busy={conversationBusy}
+                  autoFocus
+                  layoutTransition={PILL_SPRING}
+                />
+              </div>
+            </ChromeSafeFixed>
+          )}
+        </div>
 
         <EdgePanels
           currentSessionId={currentSessionId}
@@ -234,6 +259,9 @@ export function App() {
           onSelectSession={handleSelectSession}
           onSelectAgent={(model) => dispatch({ type: "SET_MODEL", model })}
           sessionsRefreshKey={sessionsRefreshKey}
+          close={closePanel}
+          sessionsOpen={sessionsOpen}
+          settingsOpen={settingsOpen}
         />
       </div>
     </LayoutGroup>
