@@ -8,11 +8,11 @@ export type AgentOrbStatus =
   | "success";
 
 const STATUS_SPEED: Record<AgentOrbStatus, number> = {
-  idle: 0.3,
-  thinking: 1.0,
-  working: 0.85,
-  error: 1.5,
-  success: 0.75,
+  idle: 0.2,
+  thinking: 0.8,
+  working: 0.65,
+  error: 1.2,
+  success: 0.55,
 };
 
 const ERROR_PALETTE = ["#3b1219", "#7f1d1d", "#c41e3a", "#ff3355"];
