@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { motion } from "motion/react";
 import { PILL_SPRING } from "../lib/motion";
-import { DitherSphere } from "./DitherSphere";
+import type { AgentOrbStatus } from "../lib/orbStatus";
+import { AgentOrb } from "./AgentOrb";
 
 /**
  * The rounded input pill from the mockups. When given a `layoutId` the shell
@@ -11,6 +12,7 @@ import { DitherSphere } from "./DitherSphere";
 export function PromptPill({
   onSubmit,
   busy = false,
+  orbStatus = "idle",
   blockWhileBusy = true,
   layoutId,
   layoutTransition,
@@ -19,6 +21,7 @@ export function PromptPill({
 }: {
   onSubmit: (prompt: string) => void;
   busy?: boolean;
+  orbStatus?: AgentOrbStatus;
   /** When false, send stays enabled during busy (composer rapid-fire). */
   blockWhileBusy?: boolean;
   layoutId?: string;
@@ -55,7 +58,7 @@ export function PromptPill({
         aria-label="Send"
         disabled={(blockWhileBusy && busy) || value.trim() === ""}
       >
-        <DitherSphere busy={busy} size={72} />
+        <AgentOrb status={orbStatus} size={72} />
       </button>
     </form>
   );

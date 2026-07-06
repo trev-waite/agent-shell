@@ -14,7 +14,7 @@ This file reflects guidance and library versions **as of the date above**. Regen
 |---------|---------|------|
 | `react` / `react-dom` | ^19.2.7 | UI runtime ([React 19.2](https://react.dev/versions) is current stable) |
 | `motion` | ^12 | Shared-layout morphs, ambient transitions |
-| `@paper-design/shaders-react` | ^0.0.76 | Blue dithering sphere accent |
+| `@paper-design/shaders-react` | ^0.0.76 | Agent orb accent (GemSmoke + LiquidMetal) |
 | `@relay/sdk` | workspace | HTTP + SSE client to the runtime server |
 | `@relay/types` | workspace | Typed `RelayEvent` payloads from the SDK |
 
