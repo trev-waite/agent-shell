@@ -159,10 +159,16 @@ export function App() {
     panel,
     close: closePanel,
     toggleSessions,
-    toggleSettings,
     sessionsOpen,
-    settingsOpen,
   } = useSidePanels();
+
+  const pillOptions = {
+    themePreference,
+    onThemeChange: handleThemeChange,
+    models,
+    selectedModel: state.selectedModel,
+    onModelChange: (model: string) => dispatch({ type: "SET_MODEL", model }),
+  };
 
   return (
     <LayoutGroup>
@@ -174,9 +180,7 @@ export function App() {
         >
           <EdgeHandles
             sessionsOpen={sessionsOpen}
-            settingsOpen={settingsOpen}
             onToggleSessions={toggleSessions}
-            onToggleSettings={toggleSettings}
           />
           <div className="shell-content-surface">
             {isComposer ? (
@@ -232,6 +236,7 @@ export function App() {
                 blockWhileBusy={false}
                 autoFocus
                 layoutTransition={PILL_SPRING}
+                options={pillOptions}
               />
             </div>
           )}
@@ -249,6 +254,7 @@ export function App() {
                   orbStatus={conversationOrbStatus}
                   autoFocus
                   layoutTransition={PILL_SPRING}
+                  options={pillOptions}
                 />
               </div>
             </ChromeSafeFixed>
@@ -259,15 +265,11 @@ export function App() {
           currentSessionId={currentSessionId}
           activeModelId={state.selectedModel}
           models={models}
-          themePreference={themePreference}
-          onThemeChange={handleThemeChange}
-          onModelChange={(model) => dispatch({ type: "SET_MODEL", model })}
           onSelectSession={handleSelectSession}
           onSelectAgent={(model) => dispatch({ type: "SET_MODEL", model })}
           sessionsRefreshKey={sessionsRefreshKey}
           close={closePanel}
           sessionsOpen={sessionsOpen}
-          settingsOpen={settingsOpen}
         />
       </div>
     </LayoutGroup>

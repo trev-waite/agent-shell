@@ -1,8 +1,19 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FocusEvent, type FormEvent } from "react";
 import { motion } from "motion/react";
+import type { ModelsResponse } from "@relay/sdk";
 import { PILL_SPRING } from "../lib/motion";
 import type { AgentOrbStatus } from "../lib/orbStatus";
+import type { ThemePreference } from "../theme";
 import { AgentOrb } from "./AgentOrb";
+import { InputOptionsTray } from "./InputOptionsTray";
+
+export type PromptPillOptions = {
+  themePreference: ThemePreference;
+  onThemeChange: (preference: ThemePreference) => void;
+  models: ModelsResponse | null;
+  selectedModel: string;
+  onModelChange: (model: string) => void;
+};
 
 /**
  * The rounded input pill from the mockups. When given a `layoutId` the shell
@@ -18,6 +29,7 @@ export function PromptPill({
   layoutTransition,
   autoFocus = false,
   placeholder = "",
+  options,
 }: {
   onSubmit: (prompt: string) => void;
   busy?: boolean;
@@ -28,8 +40,11 @@ export function PromptPill({
   layoutTransition?: { type: "spring"; stiffness: number; damping: number };
   autoFocus?: boolean;
   placeholder?: string;
+  options?: PromptPillOptions;
 }) {
   const [value, setValue] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const stackRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -37,6 +52,14 @@ export function PromptPill({
     if (!prompt) return;
     setValue("");
     onSubmit(prompt);
+  };
+
+  const handleStackFocus = () => setExpanded(true);
+
+  const handleStackBlur = (e: FocusEvent<HTMLDivElement>) => {
+    const next = e.relatedTarget;
+    if (next instanceof Node && stackRef.current?.contains(next)) return;
+    setExpanded(false);
   };
 
   const form = (
@@ -63,8 +86,8 @@ export function PromptPill({
     </form>
   );
 
-  if (layoutId !== undefined) {
-    return (
+  const pill =
+    layoutId !== undefined ? (
       <motion.div
         className="pill"
         layoutId={layoutId}
@@ -72,8 +95,34 @@ export function PromptPill({
       >
         {form}
       </motion.div>
+    ) : (
+      <div className="pill">{form}</div>
     );
+
+  if (options === undefined) {
+    return pill;
   }
 
-  return <div className="pill">{form}</div>;
+  return (
+    <div
+      ref={stackRef}
+      className="pill-stack"
+      data-tray-open={expanded ? "" : undefined}
+      onFocus={handleStackFocus}
+      onBlur={handleStackBlur}
+    >
+      {pill}
+      <div className="pill-tray" aria-hidden={!expanded}>
+        <div className="pill-tray-clip">
+          <InputOptionsTray
+            themePreference={options.themePreference}
+            onThemeChange={options.onThemeChange}
+            models={options.models}
+            selectedModel={options.selectedModel}
+            onModelChange={options.onModelChange}
+          />
+        </div>
+      </div>
+    </div>
+  );
 }
