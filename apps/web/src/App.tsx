@@ -19,6 +19,7 @@ import {
 } from "./theme";
 import { getSessionModel, recordSessionModel } from "./lib/sessionMeta";
 import { useTurnFleet } from "./hooks/useTurnFleet";
+import { useOrbStatus } from "./hooks/useOrbStatus";
 import { FADE_IN, PILL_SPRING } from "./lib/motion";
 import { ChromeSafeFixed } from "./components/chrome/ChromeSafeFixed";
 import { PromptPill } from "./components/PromptPill";
@@ -146,6 +147,9 @@ export function App() {
   const composerBusy =
     activeTurn !== undefined && isTurnInFlight(activeTurn);
 
+  const composerOrbStatus = useOrbStatus(activeTurn);
+  const conversationOrbStatus = useOrbStatus(focusedTurn);
+
   const currentSessionId =
     state.viewMode === "conversation"
       ? state.focusedSessionId
@@ -224,6 +228,7 @@ export function App() {
                 layoutId={PILL_LAYOUT_ID}
                 onSubmit={handleComposerSend}
                 busy={composerBusy}
+                orbStatus={composerOrbStatus}
                 blockWhileBusy={false}
                 autoFocus
                 layoutTransition={PILL_SPRING}
@@ -241,6 +246,7 @@ export function App() {
                   layoutId={PILL_LAYOUT_ID}
                   onSubmit={handleConversationSend}
                   busy={conversationBusy}
+                  orbStatus={conversationOrbStatus}
                   autoFocus
                   layoutTransition={PILL_SPRING}
                 />

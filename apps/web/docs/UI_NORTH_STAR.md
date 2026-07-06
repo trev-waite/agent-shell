@@ -37,7 +37,7 @@ Agent activity is **in the stream**, not on top of it — but still easy to igno
 
 Tool blocks use `--text-secondary` / monospace at small size. They must not dominate the transcript.
 
-The dither sphere on the input pill is the **only** persistent animated accent during a turn.
+The agent orb on the input pill is the **only** persistent animated accent during a turn.
 
 ---
 
