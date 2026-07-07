@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import type { ModelsResponse } from "@relay/sdk";
 import "./index.css";
@@ -162,13 +162,16 @@ export function App() {
     sessionsOpen,
   } = useSidePanels();
 
-  const pillOptions = {
-    themePreference,
-    onThemeChange: handleThemeChange,
-    models,
-    selectedModel: state.selectedModel,
-    onModelChange: (model: string) => dispatch({ type: "SET_MODEL", model }),
-  };
+  const pillOptions = useMemo(
+    () => ({
+      themePreference,
+      onThemeChange: handleThemeChange,
+      models,
+      selectedModel: state.selectedModel,
+      onModelChange: (model: string) => dispatch({ type: "SET_MODEL", model }),
+    }),
+    [themePreference, handleThemeChange, models, state.selectedModel, dispatch],
+  );
 
   return (
     <LayoutGroup>

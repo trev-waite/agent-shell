@@ -12,18 +12,12 @@ export const FADE_IN = {
   ease: [0.32, 0.72, 0.24, 1] as const,
 };
 
-/** Quick expand/collapse for the input options tray (matches --duration-fast). */
-export const TRAY_EXPAND = {
-  duration: 0.16,
-  ease: FADE_IN.ease,
-};
-
-/** Spring tray motion — symmetric in/out, no height overshoot. */
-export const TRAY_SPRING = {
+/** Quick press rebound for chrome menu buttons. */
+export const MENU_TAP_SPRING = {
   type: "spring" as const,
   stiffness: 520,
-  damping: 42,
-  mass: 0.85,
+  damping: 26,
+  mass: 0.75,
 };
 
 export function openFadeDelay(index: number): number {

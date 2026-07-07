@@ -1,4 +1,4 @@
-import { useRef, useState, type FocusEvent, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { motion } from "motion/react";
 import type { ModelsResponse } from "@relay/sdk";
 import { PILL_SPRING } from "../lib/motion";
@@ -43,8 +43,6 @@ export function PromptPill({
   options?: PromptPillOptions;
 }) {
   const [value, setValue] = useState("");
-  const [expanded, setExpanded] = useState(false);
-  const stackRef = useRef<HTMLDivElement>(null);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -52,14 +50,6 @@ export function PromptPill({
     if (!prompt) return;
     setValue("");
     onSubmit(prompt);
-  };
-
-  const handleStackFocus = () => setExpanded(true);
-
-  const handleStackBlur = (e: FocusEvent<HTMLDivElement>) => {
-    const next = e.relatedTarget;
-    if (next instanceof Node && stackRef.current?.contains(next)) return;
-    setExpanded(false);
   };
 
   const form = (
@@ -104,24 +94,16 @@ export function PromptPill({
   }
 
   return (
-    <div
-      ref={stackRef}
-      className="pill-stack"
-      data-tray-open={expanded ? "" : undefined}
-      onFocus={handleStackFocus}
-      onBlur={handleStackBlur}
-    >
+    <div className="pill-stack">
       {pill}
-      <div className="pill-tray" aria-hidden={!expanded}>
-        <div className="pill-tray-clip">
-          <InputOptionsTray
-            themePreference={options.themePreference}
-            onThemeChange={options.onThemeChange}
-            models={options.models}
-            selectedModel={options.selectedModel}
-            onModelChange={options.onModelChange}
-          />
-        </div>
+      <div className="pill-tray">
+        <InputOptionsTray
+          themePreference={options.themePreference}
+          onThemeChange={options.onThemeChange}
+          models={options.models}
+          selectedModel={options.selectedModel}
+          onModelChange={options.onModelChange}
+        />
       </div>
     </div>
   );
