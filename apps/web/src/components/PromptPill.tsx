@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { ModelsResponse } from "@relay/sdk";
@@ -75,28 +76,42 @@ export function PromptPill({
   options?: PromptPillOptions;
 }) {
   const [value, setValue] = useState("");
-  const [expanded, setExpanded] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const stackRef = useRef<HTMLDivElement>(null);
+
+  const expanded = focused || hovered || menuOpen;
 
   useEffect(() => {
     const stack = stackRef.current;
     if (!stack) return;
 
-    const syncExpanded = () => {
-      const focused = stack.matches(":focus-within");
-      setExpanded(focused);
-      if (!focused) setMenuOpen(false);
+    const syncFocused = () => {
+      const isFocused = stack.matches(":focus-within");
+      setFocused(isFocused);
+      if (!isFocused) setMenuOpen(false);
     };
 
-    syncExpanded();
-    stack.addEventListener("focusin", syncExpanded);
-    stack.addEventListener("focusout", syncExpanded);
+    syncFocused();
+    stack.addEventListener("focusin", syncFocused);
+    stack.addEventListener("focusout", syncFocused);
     return () => {
-      stack.removeEventListener("focusin", syncExpanded);
-      stack.removeEventListener("focusout", syncExpanded);
+      stack.removeEventListener("focusin", syncFocused);
+      stack.removeEventListener("focusout", syncFocused);
     };
   }, []);
+
+  const handleStackMouseLeave = (e: ReactMouseEvent<HTMLDivElement>) => {
+    const related = e.relatedTarget;
+    if (related instanceof Node && stackRef.current?.contains(related)) {
+      return;
+    }
+    setHovered(false);
+    if (!stackRef.current?.matches(":focus-within")) {
+      setMenuOpen(false);
+    }
+  };
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -177,6 +192,8 @@ export function PromptPill({
       ref={stackRef}
       className="pill-stack"
       data-expanded={expanded ? "" : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={handleStackMouseLeave}
     >
       <div className="pill-assembly">
         <motion.div
