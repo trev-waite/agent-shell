@@ -1,11 +1,24 @@
-import { useState, type FormEvent } from "react";
-import { motion } from "motion/react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type MouseEvent,
+} from "react";
+import { motion, AnimatePresence } from "motion/react";
 import type { ModelsResponse } from "@relay/sdk";
-import { PILL_SPRING } from "../lib/motion";
+import {
+  PILL_SPRING,
+  RAIL_SPRING_COLLAPSE,
+  RAIL_SPRING_EXPAND,
+} from "../lib/motion";
 import type { AgentOrbStatus } from "../lib/orbStatus";
 import type { ThemePreference } from "../theme";
 import { AgentOrb } from "./AgentOrb";
 import { InputOptionsTray } from "./InputOptionsTray";
+
+/** Grey settings cap that peeks out to the left of the pill. */
+const RAIL_VISIBLE = 40;
 
 export type PromptPillOptions = {
   themePreference: ThemePreference;
@@ -14,6 +27,29 @@ export type PromptPillOptions = {
   selectedModel: string;
   onModelChange: (model: string) => void;
 };
+
+function keepInputFocused(e: MouseEvent) {
+  e.preventDefault();
+}
+
+function SettingsPlusIcon() {
+  return (
+    <svg
+      className="pill-settings-icon"
+      viewBox="0 0 16 16"
+      width={16}
+      height={16}
+      aria-hidden="true"
+    >
+      <path
+        d="M8 4.25v7.5M4.25 8h7.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 /**
  * The rounded input pill from the mockups. When given a `layoutId` the shell
@@ -43,6 +79,51 @@ export function PromptPill({
   options?: PromptPillOptions;
 }) {
   const [value, setValue] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const stackRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const stack = stackRef.current;
+    if (!stack) return;
+
+    const syncExpanded = () => {
+      const focused = stack.matches(":focus-within");
+      setExpanded(focused);
+      if (!focused) setMenuOpen(false);
+    };
+
+    syncExpanded();
+    stack.addEventListener("focusin", syncExpanded);
+    stack.addEventListener("focusout", syncExpanded);
+    return () => {
+      stack.removeEventListener("focusin", syncExpanded);
+      stack.removeEventListener("focusout", syncExpanded);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const closeMenu = () => setMenuOpen(false);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeMenu();
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target;
+      if (target instanceof Node && stackRef.current?.contains(target)) return;
+      closeMenu();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
+  }, [menuOpen]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -93,18 +174,63 @@ export function PromptPill({
     return pill;
   }
 
+  const railTransition = expanded ? RAIL_SPRING_EXPAND : RAIL_SPRING_COLLAPSE;
+
   return (
-    <div className="pill-stack">
-      {pill}
-      <div className="pill-tray">
-        <InputOptionsTray
-          themePreference={options.themePreference}
-          onThemeChange={options.onThemeChange}
-          models={options.models}
-          selectedModel={options.selectedModel}
-          onModelChange={options.onModelChange}
-        />
+    <div
+      ref={stackRef}
+      className="pill-stack"
+      data-expanded={expanded ? "" : undefined}
+    >
+      <div className="pill-assembly">
+        <motion.div
+          className="pill-rail-popout"
+          layout={false}
+          initial={false}
+          transition={railTransition}
+          animate={{ x: expanded ? -RAIL_VISIBLE : 0 }}
+          aria-hidden={!expanded}
+        >
+          <div className="pill-rail-tab">
+            <button
+              type="button"
+              className="pill-settings-btn"
+              aria-label="Settings"
+              aria-expanded={menuOpen}
+              aria-haspopup="dialog"
+              onMouseDown={keepInputFocused}
+              onClick={() => setMenuOpen((open) => !open)}
+              tabIndex={expanded ? 0 : -1}
+            >
+              <SettingsPlusIcon />
+            </button>
+          </div>
+        </motion.div>
+        {pill}
       </div>
+      <AnimatePresence>
+        {menuOpen && expanded && (
+          <motion.div
+            className="pill-settings-menu"
+            role="dialog"
+            aria-label="Input settings"
+            onMouseDown={keepInputFocused}
+            initial={{ opacity: 0, y: 8, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={RAIL_SPRING_EXPAND}
+          >
+            <InputOptionsTray
+              themePreference={options.themePreference}
+              onThemeChange={options.onThemeChange}
+              models={options.models}
+              selectedModel={options.selectedModel}
+              onModelChange={options.onModelChange}
+              onClose={() => setMenuOpen(false)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
