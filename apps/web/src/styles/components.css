@@ -478,6 +478,16 @@
     transform-origin: bottom left;
   }
 
+  /* Bridge the hover gap between the menu and the input bar */
+  .pill-settings-menu::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 100%;
+    height: var(--space-3);
+  }
+
   .pill-settings-section + .pill-settings-section {
     padding-top: var(--space-3);
     border-top: 1px solid var(--line-soft);
