@@ -25,7 +25,6 @@ export function useSidePanels() {
 
   return {
     panel,
-    openSessions,
     close,
     toggleSessions,
     sessionsOpen: panel === "sessions",

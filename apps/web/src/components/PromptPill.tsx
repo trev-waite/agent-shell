@@ -3,10 +3,10 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type MouseEvent,
 } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import type { ModelsResponse } from "@relay/sdk";
+import { keepPillInputFocused } from "../lib/pillInput";
 import {
   PILL_SPRING,
   RAIL_SPRING_COLLAPSE,
@@ -27,10 +27,6 @@ export type PromptPillOptions = {
   selectedModel: string;
   onModelChange: (model: string) => void;
 };
-
-function keepInputFocused(e: MouseEvent) {
-  e.preventDefault();
-}
 
 function SettingsPlusIcon() {
   return (
@@ -198,7 +194,7 @@ export function PromptPill({
               aria-label="Settings"
               aria-expanded={menuOpen}
               aria-haspopup="dialog"
-              onMouseDown={keepInputFocused}
+              onMouseDown={keepPillInputFocused}
               onClick={() => setMenuOpen((open) => !open)}
               tabIndex={expanded ? 0 : -1}
             >
@@ -214,7 +210,7 @@ export function PromptPill({
             className="pill-settings-menu"
             role="dialog"
             aria-label="Input settings"
-            onMouseDown={keepInputFocused}
+            onMouseDown={keepPillInputFocused}
             initial={{ opacity: 0, y: 8, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.98 }}
@@ -225,8 +221,10 @@ export function PromptPill({
               onThemeChange={options.onThemeChange}
               models={options.models}
               selectedModel={options.selectedModel}
-              onModelChange={options.onModelChange}
-              onClose={() => setMenuOpen(false)}
+              onModelChange={(model) => {
+                options.onModelChange(model);
+                setMenuOpen(false);
+              }}
             />
           </motion.div>
         )}

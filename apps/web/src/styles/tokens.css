@@ -34,9 +34,6 @@
     /* The one accent: friendly blue, reserved for animation and focus */
     --accent: #00b2ff;
     --accent-soft: rgba(0, 178, 255, 0.14);
-    /* Deeper orb-tone blue for tray selections and highlights */
-    --accent-deep: #1a2a33;
-    --accent-deep-soft: rgba(26, 42, 51, 0.14);
     --sphere-front: #00b2ff;
     --orb-color: rgba(10, 10, 10, 0.55);
 
@@ -103,8 +100,6 @@
     --shadow-panel: 0 12px 40px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--line-soft);
 
     --accent-soft: rgba(0, 178, 255, 0.2);
-    --accent-deep: #6ec4eb;
-    --accent-deep-soft: rgba(110, 196, 235, 0.16);
     --sphere-front: #ffffff;
     --orb-color: #ffffff;
 
