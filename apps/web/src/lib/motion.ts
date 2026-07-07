@@ -12,6 +12,30 @@ export const FADE_IN = {
   ease: [0.32, 0.72, 0.24, 1] as const,
 };
 
+/** Quick press rebound for chrome menu buttons. */
+export const MENU_TAP_SPRING = {
+  type: "spring" as const,
+  stiffness: 520,
+  damping: 26,
+  mass: 0.75,
+};
+
+/** Settings rail slides out from the pill. */
+export const RAIL_SPRING_EXPAND = {
+  type: "spring" as const,
+  stiffness: 340,
+  damping: 28,
+  mass: 0.9,
+};
+
+/** Magnetic pull-back when focus leaves the input. */
+export const RAIL_SPRING_COLLAPSE = {
+  type: "spring" as const,
+  stiffness: 520,
+  damping: 38,
+  mass: 0.7,
+};
+
 export function openFadeDelay(index: number): number {
   return Math.min(index * 0.04, 0.16);
 }

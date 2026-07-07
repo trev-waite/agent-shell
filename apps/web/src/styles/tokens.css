@@ -69,9 +69,9 @@
     --drawer-width: min(82vw, 272px);
     --edge-handle-inset: var(--space-4);
     --edge-handle-top: calc(var(--inset-top) + var(--space-1));
-    --edge-handle-width: 20px;
+    --edge-handle-size: 36px;
     --conversation-back-inset: calc(
-      var(--edge-handle-inset) + var(--edge-handle-width) + var(--space-4)
+      var(--edge-handle-inset) + var(--edge-handle-size) + var(--space-4)
     );
 
     color-scheme: light;

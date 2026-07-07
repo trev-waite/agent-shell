@@ -1,31 +1,29 @@
-/** Edge toggles — live inside shell-content so they move with the main page. */
+import { motion } from "motion/react";
+import { MENU_TAP_SPRING } from "../lib/motion";
+
+/** Left sessions toggle — lives inside shell-content so it moves with the main page. */
 export function EdgeHandles({
   sessionsOpen,
-  settingsOpen,
   onToggleSessions,
-  onToggleSettings,
 }: {
   sessionsOpen: boolean;
-  settingsOpen: boolean;
   onToggleSessions: () => void;
-  onToggleSettings: () => void;
 }) {
   return (
-    <>
-      <button
-        type="button"
-        className="edge-handle edge-handle-left"
-        aria-label="Sessions"
-        aria-expanded={sessionsOpen}
-        onClick={onToggleSessions}
-      />
-      <button
-        type="button"
-        className="edge-handle edge-handle-right"
-        aria-label="Settings"
-        aria-expanded={settingsOpen}
-        onClick={onToggleSettings}
-      />
-    </>
+    <motion.button
+      type="button"
+      className="edge-menu-button edge-menu-button-left"
+      aria-label="Sessions"
+      aria-expanded={sessionsOpen}
+      onClick={onToggleSessions}
+      whileTap={{ scale: 0.88 }}
+      transition={MENU_TAP_SPRING}
+    >
+      <span className="edge-menu-icon" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </span>
+    </motion.button>
   );
 }

@@ -61,18 +61,8 @@
     border-bottom-right-radius: 0;
   }
 
-  .shell-content[data-panel-open="settings"] .shell-content-surface {
-    border-top-right-radius: var(--radius-content-elevated);
-    border-top-left-radius: 0;
-    border-bottom-left-radius: 0;
-  }
-
   .shell-content[data-panel-open="sessions"] {
     transform: translateX(var(--drawer-width));
-  }
-
-  .shell-content[data-panel-open="settings"] {
-    transform: translateX(calc(-1 * var(--drawer-width)));
   }
 
   /* Conversation dock — anchored in shell-content so it slides with the main page */
@@ -140,9 +130,10 @@
     z-index: 3;
     background: none;
     pointer-events: none;
+    overflow: visible;
   }
 
-  .composer-pill-slot .pill {
+  .composer-pill-slot .pill-stack {
     pointer-events: auto;
   }
 
@@ -315,7 +306,7 @@
   .conversation-back {
     flex-shrink: 0;
     align-self: flex-start;
-    margin: var(--edge-handle-top) var(--inset-right) var(--space-2)
+    margin: var(--edge-handle-top) var(--inset-right) var(--space-3)
       var(--conversation-back-inset);
     padding: var(--space-1) var(--space-2);
     border: none;
@@ -388,6 +379,184 @@
     overflow: visible;
   }
 
+  /* ---------- Pill stack (input + left settings popout) ---------- */
+
+  .pill-stack {
+    --pill-rail-visible: 40px;
+    --pill-rail-overlap: 28px;
+    position: relative;
+    width: min(88vw, 420px);
+    overflow: visible;
+  }
+
+  .pill-assembly {
+    position: relative;
+    height: 56px;
+  }
+
+  /* Grey cap behind the pill; overlap fills the left curve gap */
+  .pill-rail-popout {
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    display: flex;
+    align-items: stretch;
+    width: calc(var(--pill-rail-visible) + var(--pill-rail-overlap));
+    height: 100%;
+    border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+    background-color: var(--surface-drawer);
+    border: 1px solid var(--outline-chrome);
+    border-right: none;
+    pointer-events: none;
+  }
+
+  .pill-stack[data-expanded] .pill-rail-popout {
+    pointer-events: auto;
+  }
+
+  .pill-rail-tab {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: var(--pill-rail-visible);
+    pointer-events: auto;
+  }
+
+  .pill-stack .pill {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+  }
+
+  .pill-settings-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: color var(--duration-fast) var(--ease-organic);
+  }
+
+  .pill-stack:not([data-expanded]) .pill-settings-btn {
+    pointer-events: none;
+  }
+
+  .pill-settings-btn:hover,
+  .pill-settings-btn[aria-expanded="true"] {
+    color: var(--text-primary);
+  }
+
+  .pill-settings-icon {
+    display: block;
+    flex-shrink: 0;
+  }
+
+  .pill-settings-menu {
+    position: absolute;
+    bottom: calc(100% + var(--space-3));
+    left: calc(-1 * var(--pill-rail-visible));
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: min(72vw, 248px);
+    max-width: min(88vw, 288px);
+    padding: var(--space-4);
+    border-radius: var(--radius-row);
+    background-color: var(--surface-chrome);
+    border: 1px solid var(--line-soft);
+    box-shadow: var(--shadow-panel);
+    transform-origin: bottom left;
+  }
+
+  .pill-settings-section + .pill-settings-section {
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .pill-settings-theme-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .pill-settings-choice {
+    padding: var(--space-1) var(--space-1);
+    border: none;
+    background: none;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    text-align: left;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-organic);
+  }
+
+  .pill-settings-choice:hover {
+    color: var(--text-primary);
+  }
+
+  .pill-settings-choice[data-selected] {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  .pill-settings-models {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-height: 10rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .pill-settings-models::-webkit-scrollbar {
+    display: none;
+  }
+
+  .pill-settings-provider + .pill-settings-provider {
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .pill-settings-provider-label {
+    display: block;
+    margin-bottom: var(--space-1);
+    font-size: 0.62rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-ambient);
+  }
+
+  .pill-settings-provider-models {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .pill-settings-provider-models .pill-settings-choice {
+    width: 100%;
+    padding: 5px var(--space-1);
+    font-size: 0.76rem;
+  }
+
+  .pill-settings-muted {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+  }
+
   /* ---------- Conversation ---------- */
 
   .conversation {
@@ -396,8 +565,8 @@
     overflow-anchor: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
-    padding: var(--space-2) var(--inset-left) calc(var(--space-7) * 2.5)
-      var(--inset-right);
+    padding: var(--space-2) var(--inset-left)
+      calc(var(--inset-bottom) + 88px) var(--inset-right);
   }
 
   .conversation-inner {
@@ -604,7 +773,7 @@
     justify-content: center;
   }
 
-  .dock-row .pill {
+  .dock-row .pill-stack {
     width: 100%;
   }
 
@@ -639,55 +808,63 @@
     font-weight: 500;
   }
 
-  /* ---------- Edge handles ---------- */
+  /* ---------- Edge menu button (sessions) ---------- */
 
-  .edge-handle {
+  .edge-menu-button {
     position: absolute;
     top: var(--edge-handle-top);
     z-index: 10;
-    width: var(--edge-handle-width);
-    height: 36px;
+    width: var(--edge-handle-size);
+    height: var(--edge-handle-size);
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.45;
+    border-radius: 50%;
+    background-color: var(--surface-chrome);
+    border: 1px solid var(--outline-chrome);
+    box-shadow: var(--shadow-pill);
     cursor: pointer;
     pointer-events: auto;
     transition:
       top var(--duration-med) var(--ease-organic),
       left var(--duration-med) var(--ease-organic),
-      right var(--duration-med) var(--ease-organic),
-      opacity var(--duration-fast) var(--ease-organic);
+      box-shadow var(--duration-fast) var(--ease-organic);
   }
 
-  .edge-handle:hover,
-  .edge-handle:focus-visible {
-    opacity: 0.9;
+  .edge-menu-button:hover,
+  .edge-menu-button:focus-visible {
+    box-shadow: var(--shadow-elevated);
   }
 
-  .edge-handle-left {
+  .edge-menu-button-left {
     left: max(var(--edge-handle-inset), env(safe-area-inset-left, 0px));
   }
 
-  .edge-handle-right {
-    right: max(var(--edge-handle-inset), env(safe-area-inset-right, 0px));
-  }
-
-  .shell-content[data-panel-open="sessions"] .edge-handle-left {
+  .shell-content[data-panel-open="sessions"] .edge-menu-button-left {
     left: var(--edge-handle-inset);
   }
 
-  .shell-content[data-panel-open="settings"] .edge-handle-right {
-    right: var(--edge-handle-inset);
+  .edge-menu-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    width: 14px;
   }
 
-  .edge-handle::before {
-    content: "";
+  .edge-menu-icon span {
     display: block;
-    width: 2px;
-    height: 20px;
-    border-radius: var(--radius-pill);
+    width: 100%;
+    height: 1.5px;
+    border-radius: 1px;
     background-color: var(--text-secondary);
+    transition: background-color var(--duration-fast) var(--ease-organic);
+  }
+
+  .edge-menu-button:hover .edge-menu-icon span,
+  .edge-menu-button:focus-visible .edge-menu-icon span {
+    background-color: var(--text-primary);
   }
 
   /* ---------- Side drawers (recessed behind main surface) ---------- */
@@ -709,10 +886,6 @@
 
   .panel-drawer-left {
     left: 0;
-  }
-
-  .panel-drawer-right {
-    right: 0;
   }
 
   .drawer-body {
