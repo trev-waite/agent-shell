@@ -37,7 +37,7 @@ Agent activity is **in the stream**, not on top of it — but still easy to igno
 
 Tool blocks use `--text-secondary` / monospace at small size. They must not dominate the transcript.
 
-The agent orb on the input pill is the **only** persistent animated accent during a turn.
+The agent orb in the **status dock** is the only persistent animated accent during a turn. The status dock sits below the input pill on the home composer and above it in conversation view. The input pill's arrow button is a static send affordance.
 
 ---
 

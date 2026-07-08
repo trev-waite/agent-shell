@@ -23,6 +23,7 @@ import { useOrbStatus } from "./hooks/useOrbStatus";
 import { FADE_IN, PILL_SPRING } from "./lib/motion";
 import { ChromeSafeFixed } from "./components/chrome/ChromeSafeFixed";
 import { PromptPill } from "./components/PromptPill";
+import { StatusDock } from "./components/StatusDock";
 import { Conversation } from "./components/Conversation";
 import { ComposerStage } from "./components/ComposerStage";
 import { ComposerMessageStack } from "./components/ComposerMessageStack";
@@ -174,7 +175,7 @@ export function App() {
   );
 
   return (
-    <LayoutGroup>
+    <LayoutGroup id={state.viewMode}>
       <div className="shell">
         <div
           className="shell-content"
@@ -232,15 +233,13 @@ export function App() {
           {isComposer && (
             <div className="composer-pill-slot">
               <PromptPill
-                layoutId={PILL_LAYOUT_ID}
                 onSubmit={handleComposerSend}
                 busy={composerBusy}
-                orbStatus={composerOrbStatus}
                 blockWhileBusy={false}
                 autoFocus
-                layoutTransition={PILL_SPRING}
                 options={pillOptions}
               />
+              <StatusDock status={composerOrbStatus} />
             </div>
           )}
 
@@ -250,15 +249,17 @@ export function App() {
               surface={<div className="dock-veil" />}
             >
               <div className="dock-row">
-                <PromptPill
-                  layoutId={PILL_LAYOUT_ID}
-                  onSubmit={handleConversationSend}
-                  busy={conversationBusy}
-                  orbStatus={conversationOrbStatus}
-                  autoFocus
-                  layoutTransition={PILL_SPRING}
-                  options={pillOptions}
-                />
+                <div className="dock-column">
+                  <StatusDock status={conversationOrbStatus} />
+                  <PromptPill
+                    layoutId={PILL_LAYOUT_ID}
+                    layoutTransition={PILL_SPRING}
+                    onSubmit={handleConversationSend}
+                    busy={conversationBusy}
+                    autoFocus
+                    options={pillOptions}
+                  />
+                </div>
               </div>
             </ChromeSafeFixed>
           )}
