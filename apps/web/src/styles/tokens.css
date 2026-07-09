@@ -74,6 +74,22 @@
       var(--edge-handle-inset) + var(--edge-handle-size) + var(--space-4)
     );
 
+    /* Input chrome */
+    --pill-height: 56px;
+    --orb-size: 56px;
+    --status-dock-height: 45px;
+    --composer-stack-gap: var(--space-3);
+    --composer-input-stack-height: calc(
+      var(--pill-height) + var(--composer-stack-gap) + var(--status-dock-height)
+    );
+    /* Centered pill + dock stack: distance from viewport center to pill top */
+    --composer-pill-top-from-center: calc(
+      var(--composer-input-stack-height) / 2
+    );
+    --conversation-dock-pad: calc(
+      var(--composer-input-stack-height) + var(--space-4)
+    );
+
     color-scheme: light;
   }
 

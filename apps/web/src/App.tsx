@@ -23,7 +23,7 @@ import { useOrbStatus } from "./hooks/useOrbStatus";
 import { FADE_IN, PILL_SPRING } from "./lib/motion";
 import { ChromeSafeFixed } from "./components/chrome/ChromeSafeFixed";
 import { PromptPill } from "./components/PromptPill";
-import { StatusDock } from "./components/StatusDock";
+import { StatusDock, STATUS_DOCK_LAYOUT_ID } from "./components/StatusDock";
 import { Conversation } from "./components/Conversation";
 import { ComposerStage } from "./components/ComposerStage";
 import { ComposerMessageStack } from "./components/ComposerMessageStack";
@@ -175,7 +175,7 @@ export function App() {
   );
 
   return (
-    <LayoutGroup id={state.viewMode}>
+    <LayoutGroup>
       <div className="shell">
         <div
           className="shell-content"
@@ -233,13 +233,19 @@ export function App() {
           {isComposer && (
             <div className="composer-pill-slot">
               <PromptPill
+                layoutId={PILL_LAYOUT_ID}
+                layoutTransition={PILL_SPRING}
                 onSubmit={handleComposerSend}
                 busy={composerBusy}
                 blockWhileBusy={false}
                 autoFocus
                 options={pillOptions}
               />
-              <StatusDock status={composerOrbStatus} />
+              <StatusDock
+                layoutId={STATUS_DOCK_LAYOUT_ID}
+                layoutTransition={PILL_SPRING}
+                status={composerOrbStatus}
+              />
             </div>
           )}
 
@@ -250,7 +256,11 @@ export function App() {
             >
               <div className="dock-row">
                 <div className="dock-column">
-                  <StatusDock status={conversationOrbStatus} />
+                  <StatusDock
+                    layoutId={STATUS_DOCK_LAYOUT_ID}
+                    layoutTransition={PILL_SPRING}
+                    status={conversationOrbStatus}
+                  />
                   <PromptPill
                     layoutId={PILL_LAYOUT_ID}
                     layoutTransition={PILL_SPRING}
