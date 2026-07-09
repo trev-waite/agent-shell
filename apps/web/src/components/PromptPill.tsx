@@ -13,9 +13,7 @@ import {
   RAIL_SPRING_COLLAPSE,
   RAIL_SPRING_EXPAND,
 } from "../lib/motion";
-import type { AgentOrbStatus } from "../lib/orbStatus";
 import type { ThemePreference } from "../theme";
-import { AgentOrb } from "./AgentOrb";
 import { InputOptionsTray } from "./InputOptionsTray";
 
 /** Grey settings cap that peeks out to the left of the pill. */
@@ -48,6 +46,27 @@ function SettingsPlusIcon() {
   );
 }
 
+function SendArrowIcon() {
+  return (
+    <svg
+      className="pill-send-icon"
+      viewBox="0 0 16 16"
+      width={18}
+      height={18}
+      aria-hidden="true"
+    >
+      <path
+        d="M8 12.5V3.5M8 3.5L4.5 7M8 3.5l3.5 3.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
 /**
  * The rounded input pill from the mockups. When given a `layoutId` the shell
  * morphs (via motion shared layout) into the user's message bubble on entry;
@@ -56,7 +75,6 @@ function SettingsPlusIcon() {
 export function PromptPill({
   onSubmit,
   busy = false,
-  orbStatus = "idle",
   blockWhileBusy = true,
   layoutId,
   layoutTransition,
@@ -66,7 +84,6 @@ export function PromptPill({
 }: {
   onSubmit: (prompt: string) => void;
   busy?: boolean;
-  orbStatus?: AgentOrbStatus;
   /** When false, send stays enabled during busy (composer rapid-fire). */
   blockWhileBusy?: boolean;
   layoutId?: string;
@@ -158,18 +175,18 @@ export function PromptPill({
         autoComplete="off"
       />
       <button
-        className="pill-sphere"
+        className="pill-send"
         type="submit"
         aria-label="Send"
         disabled={(blockWhileBusy && busy) || value.trim() === ""}
       >
-        <AgentOrb status={orbStatus} size={72} />
+        <SendArrowIcon />
       </button>
     </form>
   );
 
-  const pill =
-    layoutId !== undefined ? (
+  if (options === undefined) {
+    return layoutId !== undefined ? (
       <motion.div
         className="pill"
         layoutId={layoutId}
@@ -180,21 +197,12 @@ export function PromptPill({
     ) : (
       <div className="pill">{form}</div>
     );
-
-  if (options === undefined) {
-    return pill;
   }
 
   const railTransition = expanded ? RAIL_SPRING_EXPAND : RAIL_SPRING_COLLAPSE;
 
-  return (
-    <div
-      ref={stackRef}
-      className="pill-stack"
-      data-expanded={expanded ? "" : undefined}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={handleStackMouseLeave}
-    >
+  const stack = (
+    <>
       <div className="pill-assembly">
         <motion.div
           className="pill-rail-popout"
@@ -219,7 +227,7 @@ export function PromptPill({
             </button>
           </div>
         </motion.div>
-        {pill}
+        <div className="pill">{form}</div>
       </div>
       <AnimatePresence>
         {menuOpen && expanded && (
@@ -246,6 +254,34 @@ export function PromptPill({
           </motion.div>
         )}
       </AnimatePresence>
+    </>
+  );
+
+  if (layoutId !== undefined) {
+    return (
+      <motion.div
+        ref={stackRef}
+        className="pill-stack"
+        layoutId={layoutId}
+        transition={layoutTransition ?? PILL_SPRING}
+        data-expanded={expanded ? "" : undefined}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={handleStackMouseLeave}
+      >
+        {stack}
+      </motion.div>
+    );
+  }
+
+  return (
+    <div
+      ref={stackRef}
+      className="pill-stack"
+      data-expanded={expanded ? "" : undefined}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={handleStackMouseLeave}
+    >
+      {stack}
     </div>
   );
 }
