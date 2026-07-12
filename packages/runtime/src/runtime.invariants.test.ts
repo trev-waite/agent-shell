@@ -10,23 +10,23 @@ function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
   const log: RelayEvent[] = [...initial];
   return {
     createSession(prompt: string) {
-      return { id: "sess-1", prompt, createdAt: Date.now() };
+      return Promise.resolve({ id: "sess-1", prompt, createdAt: Date.now() });
     },
     getSession(sessionId: string) {
-      if (sessionId !== "sess-1") return null;
-      return { id: sessionId, prompt: "test prompt", createdAt: Date.now() };
+      if (sessionId !== "sess-1") return Promise.resolve(null);
+      return Promise.resolve({ id: sessionId, prompt: "test prompt", createdAt: Date.now() });
     },
     listSessions() {
-      return [{ id: "sess-1", prompt: "test prompt", createdAt: Date.now() }];
+      return Promise.resolve([{ id: "sess-1", prompt: "test prompt", createdAt: Date.now() }]);
     },
     events: {
-      append(event: RelayEvent) {
+      async append(event: RelayEvent) {
         log.push(event);
       },
-      getBySession() {
+      async getBySession() {
         return [...log];
       },
-      getLastEventId() {
+      async getLastEventId() {
         return log.length > 0 ? log[log.length - 1]!.id : null;
       },
     },
@@ -41,7 +41,7 @@ function createMockEventSink(store: ExecutionStore, persistDelayMs = 0): EventSi
         if (persistDelayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, persistDelayMs));
         }
-        store.events.append(event);
+        await store.events.append(event);
       });
       chain = next.catch(() => {});
       return Promise.resolve();
@@ -104,7 +104,7 @@ describe("Runtime invariants", () => {
       write(event: RelayEvent): Promise<void> {
         const next = chain.then(async () => {
           await new Promise((resolve) => setTimeout(resolve, 50));
-          store.events.append(event);
+          await store.events.append(event);
           persistLog.push(event.type);
         });
         chain = next.catch(() => {});
@@ -139,7 +139,7 @@ describe("Runtime invariants", () => {
     unsubscribe();
 
     expect(persistLog).toContain("token.streamed");
-    const completed = store.events.getBySession("sess-1").find(
+    const completed = (await store.events.getBySession("sess-1")).find(
       (event) => event.type === "message.completed",
     );
     expect(completed).toBeDefined();
@@ -189,7 +189,7 @@ describe("Runtime invariants", () => {
     await waitForSessionIdle(runtime, "sess-1");
 
     expect(runtime.isSessionActive("sess-1")).toBe(false);
-    const completed = store.events.getBySession("sess-1").find(
+    const completed = (await store.events.getBySession("sess-1")).find(
       (event) => event.type === "message.completed",
     );
     expect(completed?.payload).toMatchObject({

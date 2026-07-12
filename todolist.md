@@ -22,9 +22,9 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 - [ ] **Session metadata** — Optional `ownerId`, `tenantId`, `workspaceId` on `Session` (nullable for local-first).
 
-- [ ] **EventSink error policy** — Stop swallowing persist failures in `createProjectorEventSink`; log/metric and define retry or session-fail behavior.
+- [x] **EventSink error policy** — Persist failures tracked; `flush()` rejects; runtime logs + emits `PERSIST_FAILED` on flush failure.
 
-- [ ] **Async EventStore API** — `append(): Promise<void>`, cursor/stream reads, pagination for large sessions (needed for remote stores).
+- [x] **Async EventStore API** — `append(): Promise<void>`, async reads; SQLite wrapped, Postgres native.
 
 - [ ] **Dedicated architecture doc** — Extract `docs/architecture.md` from README with North Star invariants and package dependency diagram.
 
@@ -96,12 +96,13 @@ packages/
 
 ### Implementation checklist (distributed split)
 
-- [ ] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
-- [ ] **`apps/gateway`** — Slim `apps/server`: HTTP/SSE only; swap local executor for queue executor; no direct ReActLoop.
-- [ ] **`packages/coordination`** — Redis-backed `SessionCoordinator`.
-- [ ] **`packages/dispatch`** — Queue-backed `DurableExecutor` for gateway.
-- [ ] **`packages/pubsub`** — Redis-backed `LiveEventPublisher` (gateway subscribes, workers publish).
-- [ ] **Remote storage adapter** — Shared `EventSink` / `ExecutionStore` replacing SQLite for multi-pod durability.
+- [x] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
+- [x] **`apps/gateway`** — Slim HTTP/SSE only; queue executor; no direct ReActLoop; subscribe-then-replay SSE.
+- [x] **`packages/coordination`** — Redis-backed `SessionCoordinator`.
+- [x] **`packages/dispatch`** — Redis Streams `DurableExecutor` for gateway.
+- [x] **`packages/pubsub`** — Redis Streams `LiveEventPublisher` + `SessionLiveBroker`.
+- [x] **Remote storage adapter** — Postgres `ExecutionStore` / `EventProjector` (async interfaces); SQLite remains for local `apps/server`.
+- [x] **Docker packaging** — `docker/Dockerfile` + `docker-compose.yml` (see [docs/docker.md](docs/docker.md)).
 
 ---
 
@@ -113,7 +114,7 @@ packages/
 
 - [ ] **Ephemeral execution mode** — Optional runtime wiring with in-memory store (no SQLite) for tests and throwaway runs.
 
-- [ ] **Coordinator-backed session status** — Replace or augment `deriveSessionStatus` time heuristic with lease/heartbeat awareness for distributed setups.
+- [x] **Coordinator-backed session status** — Gateway `getStatus` merges `deriveSessionStatus` with `resolveOwner`.
 
 ---
 

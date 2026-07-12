@@ -31,11 +31,15 @@ export interface RuntimeOptions {
   provider: LLMProvider;
   toolRegistry: ToolRegistry;
   workerId?: string;
+  /** Primarily configurable for tests; production defaults to five minutes. */
+  sessionLeaseTtlMs?: number;
 }
 
 export interface ExecuteOptions {
   prompt: string;
   model?: string;
+  /** When set, skip createSession and run against an existing session row. */
+  sessionId?: string;
 }
 
 export interface ReplayOptions {
@@ -67,6 +71,10 @@ interface ActiveSession {
   loop: ReActLoop;
   emitter: EventEmitter;
   abortController: AbortController;
+  renewTimer: ReturnType<typeof setInterval>;
+  completion: Promise<void>;
+  stopping: boolean;
+  persistenceFailure?: Error;
 }
 
 export class Runtime {
@@ -77,7 +85,9 @@ export class Runtime {
   private readonly provider: LLMProvider;
   private readonly toolRegistry: ToolRegistry;
   private readonly workerId: string;
+  private readonly sessionLeaseTtlMs: number;
   private readonly activeSessions = new Map<string, ActiveSession>();
+  private readonly completedFailures = new Map<string, Error>();
 
   constructor(opts: RuntimeOptions) {
     this.store = opts.store;
@@ -87,14 +97,24 @@ export class Runtime {
     this.provider = opts.provider;
     this.toolRegistry = opts.toolRegistry;
     this.workerId = opts.workerId ?? DEFAULT_WORKER_ID;
+    this.sessionLeaseTtlMs = opts.sessionLeaseTtlMs ?? SESSION_LEASE_TTL_MS;
   }
 
   async execute(opts: ExecuteOptions): Promise<string> {
-    const session = this.store.createSession(sanitize(opts.prompt));
+    let sessionId: string;
+    if (opts.sessionId !== undefined) {
+      const existing = await this.store.getSession(opts.sessionId);
+      if (!existing) {
+        throw new Error("Session not found");
+      }
+      sessionId = opts.sessionId;
+    } else {
+      sessionId = (await this.store.createSession(sanitize(opts.prompt))).id;
+    }
 
-    await this.startActiveLoop(session.id, (emit, signal) =>
+    await this.startActiveLoop(sessionId, (emit, signal) =>
       new ReActLoop({
-        sessionId: session.id,
+        sessionId,
         prompt: opts.prompt,
         provider: this.provider,
         toolRegistry: this.toolRegistry,
@@ -104,16 +124,16 @@ export class Runtime {
       }),
     );
 
-    return session.id;
+    return sessionId;
   }
 
   async rerun(opts: RerunOptions): Promise<string> {
-    const session = this.store.getSession(opts.sessionId);
+    const session = await this.store.getSession(opts.sessionId);
     if (!session) {
       throw new Error("Session not found");
     }
 
-    const events = this.store.events.getBySession(opts.sessionId);
+    const events = await this.store.events.getBySession(opts.sessionId);
     const checkpointEvent = findCheckpointEvent(events, opts.checkpointId);
     const { iteration, messages } = parseCheckpointData(checkpointEvent.payload.data);
 
@@ -134,12 +154,12 @@ export class Runtime {
   }
 
   async continue(opts: ContinueOptions): Promise<string> {
-    const session = this.store.getSession(opts.sessionId);
+    const session = await this.store.getSession(opts.sessionId);
     if (!session) {
       throw new Error("Session not found");
     }
 
-    const events = this.store.events.getBySession(opts.sessionId);
+    const events = await this.store.events.getBySession(opts.sessionId);
     const checkpointEvent = findCheckpointEvent(events);
     const { messages } = parseCheckpointData(checkpointEvent.payload.data);
 
@@ -163,16 +183,19 @@ export class Runtime {
     return opts.sessionId;
   }
 
-  listCheckpoints(sessionId: string): CheckpointSummary[] | null {
-    if (!this.store.getSession(sessionId)) {
+  async listCheckpoints(sessionId: string): Promise<CheckpointSummary[] | null> {
+    if (!(await this.store.getSession(sessionId))) {
       return null;
     }
-    const events = this.store.events.getBySession(sessionId);
+    const events = await this.store.events.getBySession(sessionId);
     return listCheckpointSummaries(events);
   }
 
   async *replay(opts: ReplayOptions): AsyncIterable<RelayEvent> {
-    const events = this.store.events.getBySession(opts.sessionId, opts.afterEventId);
+    const events = await this.store.events.getBySession(
+      opts.sessionId,
+      opts.afterEventId,
+    );
     for (const event of events) {
       yield event;
     }
@@ -180,24 +203,27 @@ export class Runtime {
 
   cancel(opts: CancelOptions): void {
     const active = this.activeSessions.get(opts.sessionId);
-    if (active) {
-      active.loop.cancel();
-      active.abortController.abort();
+    if (!active || active.stopping) return;
+    this.stopActiveSession(opts.sessionId, active, "CANCELLED", "Execution cancelled");
+  }
 
-      const event: RelayEvent = {
-        id: ulid(),
-        sessionId: opts.sessionId,
-        type: "error",
-        timestamp: Date.now(),
-        payload: {
-          code: "CANCELLED",
-          message: "Execution cancelled",
-          recoverable: false,
-        },
-      };
-      this.fanoutEvent(opts.sessionId, event, active.emitter);
-      void this.eventSink.write(event);
-    }
+  /** Persist and publish cancellation for a task cancelled before a loop starts. */
+  async recordQueuedCancellation(sessionId: string): Promise<void> {
+    const event: RelayEvent = {
+      id: ulid(),
+      sessionId,
+      type: "error",
+      timestamp: Date.now(),
+      payload: {
+        code: "CANCELLED",
+        message: "Execution cancelled before it started",
+        recoverable: false,
+      },
+    };
+    this.fanoutEvent(sessionId, event);
+    await this.eventSink.write(event);
+    await this.eventSink.flush(sessionId);
+    await this.livePublisher.flush?.(sessionId);
   }
 
   subscribe(opts: SubscribeOptions): EventEmitter {
@@ -220,8 +246,33 @@ export class Runtime {
     return this.activeSessions.has(sessionId);
   }
 
-  getSessionStatus(sessionId: string) {
-    const events = this.store.events.getBySession(sessionId);
+  /** Resolves after the loop, durable writes, live publications, and lease release. */
+  async waitForSession(sessionId: string): Promise<void> {
+    const active = this.activeSessions.get(sessionId);
+    if (active) await active.completion;
+    const failure = active?.persistenceFailure ?? this.completedFailures.get(sessionId);
+    this.completedFailures.delete(sessionId);
+    if (failure) throw failure;
+  }
+
+  /** Stop accepting in-process work, cancel active loops, and drain their cleanup. */
+  async shutdown(): Promise<void> {
+    const active = [...this.activeSessions.entries()];
+    for (const [sessionId, session] of active) {
+      if (!session.stopping) {
+        this.stopActiveSession(
+          sessionId,
+          session,
+          "WORKER_SHUTDOWN",
+          "Worker is shutting down",
+        );
+      }
+    }
+    await Promise.allSettled(active.map(([, session]) => session.completion));
+  }
+
+  async getSessionStatus(sessionId: string) {
+    const events = await this.store.events.getBySession(sessionId);
     return deriveSessionStatus(events);
   }
 
@@ -238,10 +289,11 @@ export class Runtime {
     sessionId: string,
     buildLoop: (emit: EventHandler, signal: AbortSignal) => ReActLoop,
   ): Promise<void> {
+    this.completedFailures.delete(sessionId);
     const acquired = await this.sessionCoordinator.acquireLease(
       sessionId,
       this.workerId,
-      SESSION_LEASE_TTL_MS,
+      this.sessionLeaseTtlMs,
     );
     if (!acquired) {
       throw new Error("Session is already running");
@@ -252,17 +304,149 @@ export class Runtime {
 
     const emit: EventHandler = (event) => {
       this.fanoutEvent(sessionId, event, emitter);
-      void this.eventSink.write(event);
+      void this.eventSink.write(event).catch((err) => {
+        console.error(
+          `[runtime] EventSink.write failed for session ${sessionId}:`,
+          err instanceof Error ? err.message : err,
+        );
+      });
     };
 
     const loop = buildLoop(emit, abortController.signal);
-    this.activeSessions.set(sessionId, { loop, emitter, abortController });
 
-    void loop.run().finally(async () => {
-      await this.eventSink.flush();
-      await this.sessionCoordinator.releaseLease(sessionId, this.workerId);
-      this.activeSessions.delete(sessionId);
-    });
+    const renewTimer = setInterval(() => {
+      void this.sessionCoordinator
+        .renewLease(sessionId, this.workerId, this.sessionLeaseTtlMs)
+        .then((renewed) => {
+          if (!renewed) {
+            const active = this.activeSessions.get(sessionId);
+            if (active && !active.stopping) {
+              this.stopActiveSession(
+                sessionId,
+                active,
+                "OWNERSHIP_LOST",
+                "Session lease was lost",
+              );
+            }
+          }
+        })
+        .catch((err) => {
+          console.error(
+            `[runtime] Lease renewal failed for session ${sessionId}; aborting loop:`,
+            err instanceof Error ? err.message : err,
+          );
+          const active = this.activeSessions.get(sessionId);
+          if (active && !active.stopping) {
+            this.stopActiveSession(
+              sessionId,
+              active,
+              "OWNERSHIP_LOST",
+              "Session lease renewal failed",
+            );
+          }
+        });
+    }, Math.max(1, Math.floor(this.sessionLeaseTtlMs / 3)));
+
+    const active: ActiveSession = {
+      loop,
+      emitter,
+      abortController,
+      renewTimer,
+      completion: Promise.resolve(),
+      stopping: false,
+    };
+    this.activeSessions.set(sessionId, active);
+
+    active.completion = loop
+      .run()
+      .catch((err) => {
+        console.error(
+          `[runtime] Loop crashed for session ${sessionId}:`,
+          err instanceof Error ? err.message : err,
+        );
+        const crashEvent: RelayEvent = {
+          id: ulid(),
+          sessionId,
+          type: "error",
+          timestamp: Date.now(),
+          payload: {
+            code: "RUNTIME_CRASH",
+            message: err instanceof Error ? err.message : "Runtime loop crashed",
+            recoverable: false,
+          },
+        };
+        this.fanoutEvent(sessionId, crashEvent, emitter);
+        void this.eventSink.write(crashEvent);
+      })
+      .then(async () => {
+        clearInterval(renewTimer);
+        try {
+          await this.eventSink.flush(sessionId);
+        } catch (err) {
+          console.error(
+            `[runtime] EventSink.flush failed for session ${sessionId}:`,
+            err instanceof Error ? err.message : err,
+          );
+          const flushError: RelayEvent = {
+            id: ulid(),
+            sessionId,
+            type: "error",
+            timestamp: Date.now(),
+            payload: {
+              code: "PERSIST_FAILED",
+              message:
+                err instanceof Error
+                  ? err.message
+                  : "Failed to persist session events",
+              recoverable: false,
+            },
+          };
+          active.persistenceFailure =
+            err instanceof Error ? err : new Error(String(err));
+          this.completedFailures.set(sessionId, active.persistenceFailure);
+          this.fanoutEvent(sessionId, flushError, emitter);
+        }
+        try {
+          await this.livePublisher.flush?.(sessionId);
+        } catch (err) {
+          console.error(
+            `[runtime] Live publish flush failed for session ${sessionId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+        try {
+          await this.sessionCoordinator.releaseLease(sessionId, this.workerId);
+        } catch (err) {
+          console.error(
+            `[runtime] Failed to release lease for session ${sessionId}:`,
+            err instanceof Error ? err.message : err,
+          );
+        } finally {
+          if (this.activeSessions.get(sessionId) === active) {
+            this.activeSessions.delete(sessionId);
+          }
+        }
+      });
+  }
+
+  private stopActiveSession(
+    sessionId: string,
+    active: ActiveSession,
+    code: string,
+    message: string,
+  ): void {
+    active.stopping = true;
+    active.loop.cancel();
+    active.abortController.abort();
+    const event: RelayEvent = {
+      id: ulid(),
+      sessionId,
+      type: "error",
+      timestamp: Date.now(),
+      payload: { code, message, recoverable: false },
+    };
+    this.fanoutEvent(sessionId, event, active.emitter);
+    void this.eventSink.write(event);
   }
 }
 

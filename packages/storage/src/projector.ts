@@ -58,7 +58,7 @@ function applyProjection(tx: RelayDatabase, event: RelayEvent): void {
 
 export function createEventProjector(db: RelayDatabase): EventProjector {
   return {
-    persist(event: RelayEvent): void {
+    async persist(event: RelayEvent): Promise<void> {
       db.transaction((tx) => {
         tx.insert(schema.events).values({
           id: event.id,

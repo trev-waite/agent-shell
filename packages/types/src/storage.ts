@@ -1,32 +1,32 @@
 import type { RelayEvent, Session } from "./events.js";
 
 export interface EventStore {
-  append(event: RelayEvent): void;
-  getBySession(sessionId: string, afterId?: string): RelayEvent[];
-  getLastEventId(sessionId: string): string | null;
+  append(event: RelayEvent): Promise<void>;
+  getBySession(sessionId: string, afterId?: string): Promise<RelayEvent[]>;
+  getLastEventId(sessionId: string): Promise<string | null>;
 }
 
 /** Persists an event and its derived projections atomically. */
 export interface EventProjector {
-  persist(event: RelayEvent): void;
+  persist(event: RelayEvent): Promise<void>;
 }
 
 export interface ExecutionStore {
-  createSession(prompt: string): Session;
-  getSession(sessionId: string): Session | null;
-  listSessions(): Session[];
+  createSession(prompt: string): Promise<Session>;
+  getSession(sessionId: string): Promise<Session | null>;
+  listSessions(): Promise<Session[]>;
   events: EventStore;
 }
 
 export interface CheckpointStore {
-  save(sessionId: string, checkpointId: string, data: unknown): void;
-  get(sessionId: string, checkpointId: string): unknown | null;
+  save(sessionId: string, checkpointId: string, data: unknown): Promise<void>;
+  get(sessionId: string, checkpointId: string): Promise<unknown | null>;
 }
 
 // Future work: object storage for tool artifacts, exports, and large blobs.
 export interface ArtifactStore {
-  put(sessionId: string, artifactId: string, data: unknown): void;
-  get(sessionId: string, artifactId: string): unknown | null;
+  put(sessionId: string, artifactId: string, data: unknown): Promise<void>;
+  get(sessionId: string, artifactId: string): Promise<unknown | null>;
 }
 
 export interface MessageProjection {

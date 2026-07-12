@@ -10,23 +10,23 @@ function createMockStore(initial: RelayEvent[] = []): ExecutionStore {
   const log: RelayEvent[] = [...initial];
   return {
     createSession(prompt: string) {
-      return { id: "sess-1", prompt, createdAt: Date.now() };
+      return Promise.resolve({ id: "sess-1", prompt, createdAt: Date.now() });
     },
     getSession(sessionId: string) {
-      if (sessionId !== "sess-1") return null;
-      return { id: sessionId, prompt: "first prompt", createdAt: Date.now() };
+      if (sessionId !== "sess-1") return Promise.resolve(null);
+      return Promise.resolve({ id: sessionId, prompt: "first prompt", createdAt: Date.now() });
     },
     listSessions() {
-      return [{ id: "sess-1", prompt: "first prompt", createdAt: Date.now() }];
+      return Promise.resolve([{ id: "sess-1", prompt: "first prompt", createdAt: Date.now() }]);
     },
     events: {
-      append(event: RelayEvent) {
+      async append(event: RelayEvent) {
         log.push(event);
       },
-      getBySession() {
+      async getBySession() {
         return [...log];
       },
-      getLastEventId() {
+      async getLastEventId() {
         return log.length > 0 ? log[log.length - 1]!.id : null;
       },
     },
@@ -37,8 +37,8 @@ function createMockEventSink(store: ExecutionStore): EventSink {
   let chain = Promise.resolve();
   return {
     write(event: RelayEvent): Promise<void> {
-      const next = chain.then(() => {
-        store.events.append(event);
+      const next = chain.then(async () => {
+        await store.events.append(event);
       });
       chain = next.catch(() => {});
       return Promise.resolve();
@@ -109,7 +109,7 @@ describe("Runtime.continue", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
-    const allEvents = store.events.getBySession("sess-1");
+    const allEvents = await store.events.getBySession("sess-1");
     const userStarts = allEvents.filter(
       (event) => event.type === "message.started" && event.payload.role === "user",
     );

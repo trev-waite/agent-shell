@@ -32,7 +32,7 @@ function setupSession(sessionId: string): ReturnType<typeof createEventStore> {
 }
 
 describe("createEventStore.getBySession", () => {
-  test("returns events after a valid afterId", () => {
+  test("returns events after a valid afterId", async () => {
     const sessionId = "sess-1";
     const events = setupSession(sessionId);
 
@@ -51,19 +51,19 @@ describe("createEventStore.getBySession", () => {
       payload: { messageId: "msg-1", role: "assistant", content: "hello" },
     };
 
-    events.append(e1);
-    events.append(e2);
+    await events.append(e1);
+    await events.append(e2);
 
-    expect(events.getBySession(sessionId)).toHaveLength(2);
-    expect(events.getBySession(sessionId, "evt-1")).toHaveLength(1);
-    expect(events.getBySession(sessionId, "evt-1")[0]?.id).toBe("evt-2");
+    expect(await events.getBySession(sessionId)).toHaveLength(2);
+    expect(await events.getBySession(sessionId, "evt-1")).toHaveLength(1);
+    expect((await events.getBySession(sessionId, "evt-1"))[0]?.id).toBe("evt-2");
   });
 
-  test("returns empty array when afterId is unknown", () => {
+  test("falls back to full replay when afterId is unknown", async () => {
     const sessionId = "sess-2";
     const events = setupSession(sessionId);
 
-    events.append({
+    await events.append({
       id: "evt-a",
       sessionId,
       type: "message.started",
@@ -71,6 +71,8 @@ describe("createEventStore.getBySession", () => {
       payload: { role: "user", content: "hi" },
     });
 
-    expect(events.getBySession(sessionId, "stale-id")).toEqual([]);
+    const replayed = await events.getBySession(sessionId, "stale-id");
+    expect(replayed).toHaveLength(1);
+    expect(replayed[0]?.id).toBe("evt-a");
   });
 });
