@@ -301,7 +301,7 @@ describe("uiReducer UI actions", () => {
           timestamp: 1,
         },
       ],
-      selectedModel: "gemini-3.1-flash-lite" as const,
+      selectedModel: "gemini-3.5-flash-lite" as const,
       colorSchemePreference: "dark" as const,
       streamConnected: true,
       messageQueue: [{ id: "q-1", prompt: "queued", enqueuedAt: 1 }],

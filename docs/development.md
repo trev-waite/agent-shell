@@ -16,7 +16,7 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | — | Google Gemini API key (required, server only) |
-| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Default Gemini model ID (server + terminal fallback) |
+| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Default Gemini model ID (server + terminal fallback) |
 | `GEMINI_REASONING` | — | Optional thinking depth: `minimal`, `low`, `medium`, `high`, `none`, or `provider-default` |
 | `RELAY_PORT` | `4310` | Runtime server port |
 | `RELAY_DB_PATH` | `./data/relay.db` | SQLite database path |

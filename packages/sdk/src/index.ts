@@ -6,7 +6,7 @@ export interface RelayClientOptions {
 
 export interface SendOptions {
   prompt: string;
-  /** Provider model id (e.g. gemini-3.1-flash-lite). Validated server-side per provider. */
+  /** Provider model id (e.g. gemini-3.5-flash-lite). Validated server-side per provider. */
   model?: string;
   /** Continue an existing session with a follow-up message instead of starting a new one. */
   sessionId?: string;

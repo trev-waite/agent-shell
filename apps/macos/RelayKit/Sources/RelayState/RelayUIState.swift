@@ -63,7 +63,7 @@ public struct RelayUIState: Sendable {
     public var traces: [ToolTrace] = []
     public var turns: [ConversationTurn] = []
     public var sessionId: String?
-    public var selectedModel: String = "gemini-2.5-flash"
+    public var selectedModel: String = "gemini-3.5-flash-lite"
     public var serverOnline: Bool?
     public var streamConnected = false
     public var activityLabel: String?
