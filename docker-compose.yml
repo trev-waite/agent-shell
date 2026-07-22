@@ -1,15 +1,18 @@
-# Distributed profile: Redis + Postgres + gateway + N workers.
-# Usage:
-#   docker compose up --build --scale worker=3
-# Point clients at http://localhost:4310
+# Distributed profile: 1 gateway + N workers + Redis + Postgres.
 #
+# Prod-shaped (default) — gateway :4310 only; Redis/Postgres stay on the compose network:
+#   docker compose up --build --scale worker=3
+#
+# Local — publish infra ports + optional workspace mount:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build --scale worker=2
+#
+# Fast iteration (no app image rebuilds): start infra, run apps with Bun — see docs/docker.md.
 # Local-first DX is unchanged: bun run dev:server (SQLite, no Docker).
 
 services:
   redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    image: redis:8.8-alpine
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -17,13 +20,12 @@ services:
       retries: 5
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: relay
       POSTGRES_PASSWORD: relay
       POSTGRES_DB: relay
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U relay -d relay"]
       interval: 5s
@@ -36,7 +38,8 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: ["bun", "apps/gateway/src/index.ts"]
+      target: gateway
+    restart: unless-stopped
     ports:
       - "4310:4310"
     environment:
@@ -50,22 +53,36 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://127.0.0.1:4310/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
 
   worker:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    command: ["bun", "apps/worker/src/index.ts"]
-    env_file:
-      - .env
+      target: worker
+    restart: unless-stopped
     environment:
       REDIS_URL: redis://redis:6379
       RELAY_DATABASE_URL: postgres://relay:relay@postgres:5432/relay
       WORKSPACE_DIR: /workspace
       WORKER_CONCURRENCY: "4"
+      # Interpolated from host env / project .env — not a full env_file dump into the container.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?GEMINI_API_KEY is required}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
+      GEMINI_REASONING: ${GEMINI_REASONING:-}
       # WORKER_ID defaults to hostname inside the container (unique per replica)
-    volumes:
-      - ${RELAY_WORKSPACE:-.}:/workspace:ro
+    mem_limit: 1g
     depends_on:
       redis:
         condition: service_healthy

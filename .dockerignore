@@ -1,15 +1,23 @@
 node_modules
 **/node_modules
 **/dist
+**/.turbo
 .git
 .cursor
-apps/web/node_modules
-apps/terminal
 apps/macos
-apps/web
 *.md
 !docs/docker.md
 .env
 data
 **/*.db
 **/*.db-*
+**/*.test.ts
+**/*.tsbuildinfo
+
+# Keep package.json for workspace install; omit non-backend app sources.
+apps/web/*
+!apps/web/package.json
+apps/terminal/*
+!apps/terminal/package.json
+apps/server/*
+!apps/server/package.json

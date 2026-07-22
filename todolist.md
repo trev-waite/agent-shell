@@ -102,11 +102,13 @@ packages/
 - [x] **`packages/dispatch`** — Redis Streams `DurableExecutor` for gateway.
 - [x] **`packages/pubsub`** — Redis Streams `LiveEventPublisher` + `SessionLiveBroker`.
 - [x] **Remote storage adapter** — Postgres `ExecutionStore` / `EventProjector` (async interfaces); SQLite remains for local `apps/server`.
-- [x] **Docker packaging** — `docker/Dockerfile` + `docker-compose.yml` (see [docs/docker.md](docs/docker.md)).
+- [x] **Docker packaging** — Role-specific `gateway` / `worker` image targets + prod-shaped compose (local/workspace overrides); non-root `relay` user (see [docs/docker.md](docs/docker.md)).
 
 ---
 
 ## Medium priority
+
+- [ ] **Slim gateway runtime imports** — Split `@relay/runtime` so gateway can import projections/sanitize/checkpoint helpers without pulling `@relay/providers` / AI SDK into the gateway image.
 
 - [ ] **OpenTelemetry for production** — When deploying beyond local-first: add `@ai-sdk/otel`, `registerTelemetry()` in `apps/server`, wire an OTel collector/exporter (Datadog, Langfuse, Grafana, etc.), and `RELAY_TELEMETRY=1` env. Complements `usage.updated` (product UI) with cross-session ops tracing; not a replacement for the event log.
 
