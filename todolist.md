@@ -10,7 +10,7 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 - [ ] **Headless runtime entrypoint** — Thin CLI (e.g. `relay exec --prompt "..."`) that runs `@relay/runtime` directly without HTTP. Proves the runtime is independent of transport; useful for scripts and CI.
 
-- [ ] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite transaction per N tokens or per assistant message). Fanout stays per-token; only persistence batches.
+- [x] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite/Postgres transaction per N tokens or on non-token boundary). Fanout stays per-token; only persistence batches.
 
 - [ ] **Server integration tests** — HTTP-level tests for SSE disconnect (client closes, execution completes), `Last-Event-ID` replay, and multi-subscriber fanout through the real Fastify server.
 
@@ -103,6 +103,8 @@ packages/
 - [x] **`packages/pubsub`** — Redis Streams `LiveEventPublisher` + `SessionLiveBroker`.
 - [x] **Remote storage adapter** — Postgres `ExecutionStore` / `EventProjector` (async interfaces); SQLite remains for local `apps/server`.
 - [x] **Docker packaging** — Role-specific `gateway` / `worker` image targets + prod-shaped compose (local/workspace overrides); non-root `relay` user (see [docs/docker.md](docs/docker.md)).
+
+- [ ] **Worker autoscaling** — Production: scale **worker** replicas only (gateway stays ×1) via **KEDA Redis Streams scaler** (or HPA on stream lag/pending for `relay-workers`), with `minReplicas ≥ 1`, Postgres pool / Gemini quota ceilings, and slow scale-down. Local: `docker compose up --scale worker=N`. See [docs/docker.md § Scaling workers](docs/docker.md#scaling-workers).
 
 ---
 

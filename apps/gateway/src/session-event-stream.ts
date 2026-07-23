@@ -10,16 +10,29 @@ export interface LiveBroker {
 /**
  * Subscribe-first SSE join: open live subscription, buffer while replaying
  * durable history, then merge by ULID and switch to live-only emit.
+ *
+ * Pass `skipDurableReplay: true` for brand-new sessions (no `Last-Event-ID`)
+ * to avoid a Postgres round-trip before the first live token.
  */
 export async function attachSessionEventStream(opts: {
   store: ExecutionStore;
   liveBroker: LiveBroker;
   sessionId: string;
   afterId: string | undefined;
+  /** Skip `getBySession` when the session has no durable history yet. */
+  skipDurableReplay?: boolean;
   sendEvent: (event: RelayEvent) => void;
   onClose: (unsubscribe: () => void) => void;
 }): Promise<void> {
-  const { store, liveBroker, sessionId, afterId, sendEvent, onClose } = opts;
+  const {
+    store,
+    liveBroker,
+    sessionId,
+    afterId,
+    skipDurableReplay = false,
+    sendEvent,
+    onClose,
+  } = opts;
   const sentIds = new Set<string>();
   const sentOrder: string[] = [];
   const maxRememberedIds = 20_000;
@@ -46,9 +59,11 @@ export async function attachSessionEventStream(opts: {
   onClose(subscription.unsubscribe);
   await subscription.ready;
 
-  const historical = await store.events.getBySession(sessionId, afterId);
-  for (const event of historical) {
-    emit(event);
+  if (!skipDurableReplay) {
+    const historical = await store.events.getBySession(sessionId, afterId);
+    for (const event of historical) {
+      emit(event);
+    }
   }
 
   liveBuffer.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

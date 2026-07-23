@@ -28,6 +28,66 @@ describe("uiReducer EVENT dedupe", () => {
   });
 });
 
+describe("uiReducer optimistic user messages", () => {
+  test("ADD_LOCAL_USER_MESSAGE shows the prompt immediately", () => {
+    const next = uiReducer(initialState, {
+      type: "ADD_LOCAL_USER_MESSAGE",
+      id: "local-1",
+      prompt: "hello",
+    });
+    expect(next.messages).toEqual([
+      {
+        id: "local-1",
+        role: "user",
+        content: "hello",
+        local: true,
+        timestamp: expect.any(Number),
+      },
+    ]);
+    expect(next.activity).toEqual({ label: "Thinking…", phase: "thinking" });
+    expect(next.metrics.sessionStatus).toBe("running");
+  });
+
+  test("message.started confirms a matching local user message", () => {
+    const withLocal = uiReducer(initialState, {
+      type: "ADD_LOCAL_USER_MESSAGE",
+      id: "local-1",
+      prompt: "hello",
+    });
+    const event: RelayEvent = {
+      id: "evt-1",
+      sessionId: "s",
+      type: "message.started",
+      timestamp: 1_700_000_000_000,
+      payload: { role: "user", content: "hello" },
+    };
+    const next = uiReducer(withLocal, { type: "EVENT", event });
+    expect(next.messages).toHaveLength(1);
+    expect(next.messages[0]).toMatchObject({
+      id: "evt-1",
+      role: "user",
+      content: "hello",
+      local: false,
+      timestamp: 1_700_000_000_000,
+    });
+  });
+
+  test("REMOVE_LOCAL_USER_MESSAGE clears pending echo and idle state", () => {
+    const withLocal = uiReducer(initialState, {
+      type: "ADD_LOCAL_USER_MESSAGE",
+      id: "local-1",
+      prompt: "hello",
+    });
+    const next = uiReducer(withLocal, {
+      type: "REMOVE_LOCAL_USER_MESSAGE",
+      id: "local-1",
+    });
+    expect(next.messages).toHaveLength(0);
+    expect(next.activity).toBeNull();
+    expect(next.metrics.sessionStatus).toBe("idle");
+  });
+});
+
 describe("uiReducer timestamps and tool I/O", () => {
   test("stores message timestamp and sessionStartedAt on user message", () => {
     const event: RelayEvent = {

@@ -73,9 +73,13 @@ async function main() {
   const databaseUrl = requireEnv("RELAY_DATABASE_URL");
 
   const redis = await connectRedis(redisUrl);
-  const { store, close: closeDb } = await openPostgresStorage(databaseUrl);
+  const { store, sql, close: closeDb } = await openPostgresStorage(databaseUrl);
   const coordinator = createRedisSessionCoordinator({ redis });
   const liveBroker = createSessionLiveBroker(redis);
+  const traceTiming = process.env.RELAY_TRACE_TIMING === "1";
+  /** Fresh sessions skip durable SSE replay for a short window (no Postgres RTT before live). */
+  const freshSessions = new Map<string, number>();
+  const FRESH_SESSION_TTL_MS = 30_000;
 
   const executor = createQueueDurableExecutor({
     redis,
@@ -110,7 +114,7 @@ async function main() {
   app.get("/health", async (_request, reply) => {
     try {
       await redis.ping();
-      await store.listSessions();
+      await sql`SELECT 1`;
       return { status: "ok", redis: true, database: true };
     } catch (err) {
       reply.status(503);
@@ -136,12 +140,19 @@ async function main() {
     }
 
     const session = await store.createSession(sanitize(prompt));
+    const enqueueAt = Date.now();
     const { sessionId } = await executor.execute({
       kind: "execute",
       sessionId: session.id,
       prompt,
       ...(model !== undefined ? { model } : {}),
     });
+    freshSessions.set(sessionId, enqueueAt);
+    if (traceTiming) {
+      console.log(
+        `[timing] enqueue session=${sessionId} ms=${Date.now() - enqueueAt}`,
+      );
+    }
     return { sessionId };
   });
 
@@ -218,13 +229,28 @@ async function main() {
       });
 
       try {
+        const createdAt = freshSessions.get(sessionId);
+        const skipDurableReplay =
+          afterId === undefined &&
+          createdAt !== undefined &&
+          Date.now() - createdAt < FRESH_SESSION_TTL_MS;
+        if (createdAt !== undefined) freshSessions.delete(sessionId);
+
+        let firstSseLogged = false;
         await attachSessionEventStream({
           store,
           liveBroker,
           sessionId,
           afterId,
+          skipDurableReplay,
           sendEvent: (event: RelayEvent) => {
             if (reply.raw.writableEnded) return;
+            if (traceTiming && !firstSseLogged) {
+              firstSseLogged = true;
+              console.log(
+                `[timing] sse_first session=${sessionId} type=${event.type} id=${event.id}`,
+              );
+            }
             reply.raw.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
           },
           onClose: (unsub) => {

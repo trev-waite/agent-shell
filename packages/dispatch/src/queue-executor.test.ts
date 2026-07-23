@@ -3,6 +3,7 @@ import type { SessionCoordinator } from "@relay/types";
 import {
   claimNextTask,
   createQueueDurableExecutor,
+  reclaimIdleTask,
 } from "./queue-executor.js";
 
 function createMemoryCoordinator(): SessionCoordinator & {
@@ -163,10 +164,36 @@ describe("createQueueDurableExecutor", () => {
 });
 
 describe("claimNextTask", () => {
-  test("reclaims an abandoned pending task before reading new entries", async () => {
-    let readNew = false;
+  test("reads the next new stream entry without reclaiming", async () => {
+    let autoClaimed = false;
     const redis = {
-      xGroupCreate: async () => "OK",
+      xAutoClaim: async () => {
+        autoClaimed = true;
+        return { nextId: "0-0", messages: [], deletedMessages: [] };
+      },
+      xReadGroup: async () => [{
+        name: "relay:tasks",
+        messages: [{
+          id: "2-0",
+          message: { task: JSON.stringify({
+            kind: "execute",
+            sessionId: "sess-2",
+            prompt: "hi",
+          }) },
+        }],
+      }],
+    } as never;
+
+    const claimed = await claimNextTask(redis, "worker-2", 0);
+    expect(claimed?.streamId).toBe("2-0");
+    expect(claimed?.task.sessionId).toBe("sess-2");
+    expect(autoClaimed).toBe(false);
+  });
+});
+
+describe("reclaimIdleTask", () => {
+  test("reclaims an abandoned pending task from the PEL", async () => {
+    const redis = {
       xAutoClaim: async () => ({
         nextId: "0-0",
         messages: [{
@@ -179,15 +206,10 @@ describe("claimNextTask", () => {
         }],
         deletedMessages: [],
       }),
-      xReadGroup: async () => {
-        readNew = true;
-        return null;
-      },
     } as never;
 
-    const claimed = await claimNextTask(redis, "worker-2", 0, 1_000);
+    const claimed = await reclaimIdleTask(redis, "worker-2", 1_000);
     expect(claimed?.streamId).toBe("1-0");
     expect(claimed?.task.sessionId).toBe("sess-1");
-    expect(readNew).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ export {
   createQueueDurableExecutor,
   ensureTaskGroup,
   claimNextTask,
+  reclaimIdleTask,
   ackTask,
   claimIdempotencyKey,
   getIdempotencyState,

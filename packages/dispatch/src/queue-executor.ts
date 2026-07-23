@@ -158,30 +158,16 @@ export async function ensureTaskGroup(redis: RedisClientType): Promise<void> {
 }
 
 /**
- * Claim the next task for a worker consumer group member.
+ * Claim the next *new* task for a worker consumer group member via XREADGROUP.
+ * Does not ensure the consumer group or reclaim idle PEL entries — call
+ * `ensureTaskGroup` at worker startup and `reclaimIdleTask` on an interval.
  * Returns null on timeout / empty.
  */
 export async function claimNextTask(
   redis: RedisClientType,
   consumerId: string,
   blockMs = 5_000,
-  reclaimIdleMs = DEFAULT_RECLAIM_IDLE_MS,
 ): Promise<ClaimedTask | null> {
-  await ensureTaskGroup(redis);
-
-  const reclaimed = await redis.xAutoClaim(
-    TASK_STREAM_KEY,
-    TASK_GROUP,
-    consumerId,
-    reclaimIdleMs,
-    "0-0",
-    { COUNT: 1 },
-  );
-  const reclaimedMessage = reclaimed.messages.find((message) => message !== null);
-  if (reclaimedMessage) {
-    return parseClaimedTask(redis, reclaimedMessage);
-  }
-
   const result = await redis.xReadGroup(
     TASK_GROUP,
     consumerId,
@@ -199,6 +185,28 @@ export async function claimNextTask(
   }
 
   return parseClaimedTask(redis, stream.messages[0]!);
+}
+
+/**
+ * Reclaim one abandoned pending entry from the PEL (idle longer than reclaimIdleMs).
+ * Run periodically from the worker loop — not on the XREADGROUP critical path.
+ */
+export async function reclaimIdleTask(
+  redis: RedisClientType,
+  consumerId: string,
+  reclaimIdleMs = DEFAULT_RECLAIM_IDLE_MS,
+): Promise<ClaimedTask | null> {
+  const reclaimed = await redis.xAutoClaim(
+    TASK_STREAM_KEY,
+    TASK_GROUP,
+    consumerId,
+    reclaimIdleMs,
+    "0-0",
+    { COUNT: 1 },
+  );
+  const reclaimedMessage = reclaimed.messages.find((message) => message !== null);
+  if (!reclaimedMessage) return null;
+  return parseClaimedTask(redis, reclaimedMessage);
 }
 
 async function parseClaimedTask(

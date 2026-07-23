@@ -14,6 +14,8 @@ export interface ChatMessage {
   role: "user" | "assistant" | "error";
   content: string;
   streaming?: boolean;
+  /** Optimistic local echo, not yet confirmed by the event stream. */
+  local?: boolean;
   timestamp: number;
   completedAt?: number;
 }
@@ -117,6 +119,8 @@ export type UIAction =
   | { type: "ENQUEUE_MESSAGE"; prompt: string }
   | { type: "REMOVE_QUEUE_HEAD" }
   | { type: "RESTORE_QUEUE_HEAD"; item: QueuedMessage }
+  | { type: "ADD_LOCAL_USER_MESSAGE"; id: string; prompt: string }
+  | { type: "REMOVE_LOCAL_USER_MESSAGE"; id: string }
   | { type: "EVENT"; event: RelayEvent }
   | { type: "NEW_SESSION" }
   | { type: "RESET" }
@@ -449,6 +453,42 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         ...state,
         messageQueue: [action.item, ...state.messageQueue],
       };
+    case "ADD_LOCAL_USER_MESSAGE": {
+      const now = Date.now();
+      return {
+        ...state,
+        messages: [
+          ...state.messages,
+          {
+            id: action.id,
+            role: "user",
+            content: action.prompt,
+            local: true,
+            timestamp: now,
+          },
+        ],
+        sessionStartedAt: state.sessionStartedAt ?? now,
+        sessionEndedAt: null,
+        activity: { label: "Thinking…", phase: "thinking" },
+        metrics: { ...state.metrics, sessionStatus: "running" },
+        commandNotice: null,
+      };
+    }
+    case "REMOVE_LOCAL_USER_MESSAGE": {
+      const messages = state.messages.filter((m) => m.id !== action.id);
+      const stillBusy =
+        messages.some((m) => m.local || (m.role === "assistant" && m.streaming)) ||
+        state.traces.some((t) => t.status === "running");
+      return {
+        ...state,
+        messages,
+        activity: stillBusy ? state.activity : null,
+        metrics: {
+          ...state.metrics,
+          sessionStatus: stillBusy ? state.metrics.sessionStatus : "idle",
+        },
+      };
+    }
     case "NEW_SESSION":
       return {
         ...initialState,
@@ -493,6 +533,38 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
         case "message.started": {
           const payload = event.payload;
           const isUser = payload.role === "user";
+
+          if (isUser) {
+            const idx = base.messages.findIndex(
+              (m) => m.role === "user" && m.local && m.content === payload.content,
+            );
+            const messages = [...base.messages];
+            if (idx >= 0) {
+              messages[idx] = {
+                ...messages[idx]!,
+                id: event.id,
+                local: false,
+                timestamp: event.timestamp,
+              };
+            } else {
+              messages.push({
+                id: event.id,
+                role: "user",
+                content: payload.content,
+                timestamp: event.timestamp,
+              });
+            }
+            return {
+              ...base,
+              messages,
+              sessionStartedAt:
+                base.sessionStartedAt === null ? event.timestamp : base.sessionStartedAt,
+              sessionEndedAt: null,
+              activity: { label: "Thinking…", phase: "thinking" },
+              metrics: { ...base.metrics, sessionStatus: "running" },
+            };
+          }
+
           return {
             ...base,
             messages: [
@@ -501,19 +573,10 @@ export function uiReducer(state: UIState, action: UIAction): UIState {
                 id: event.id,
                 role: payload.role,
                 content: payload.content,
-                streaming: payload.role === "assistant",
+                streaming: true,
                 timestamp: event.timestamp,
               },
             ],
-            sessionStartedAt:
-              isUser && base.sessionStartedAt === null
-                ? event.timestamp
-                : base.sessionStartedAt,
-            ...(isUser ? { sessionEndedAt: null } : {}),
-            activity:
-              isUser
-                ? { label: "Thinking…", phase: "thinking" }
-                : base.activity,
             metrics: { ...base.metrics, sessionStatus: "running" },
           };
         }

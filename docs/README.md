@@ -12,7 +12,7 @@ Detailed guides for Relay. The [root README](../README.md) is the landing page �
 6. **[Storage](./storage.md)** — SQLite schema and async persistence
 7. **[Runtime API](./runtime-api.md)** — HTTP routes (contributors)
 8. **[Monorepo](./monorepo.md)** — Package layout
-9. **[Docker](./docker.md)** — Optional gateway + worker containers
+9. **[Docker](./docker.md)** — Optional gateway + worker containers, scaling, Redis claim connections
 
 ## Reference
 
@@ -20,8 +20,8 @@ Detailed guides for Relay. The [root README](../README.md) is the landing page �
 |-----|----------------|
 | [Security](./security.md) | Local threat model, tool guardrails |
 | [Development](./development.md) | Scripts, env vars, build and test |
-| [Docker](./docker.md) | Distributed compose profile |
+| [Docker](./docker.md) | Distributed compose profile, worker scale / autoscaling plan |
 | [Troubleshooting](./troubleshooting.md) | Common setup and runtime issues |
-| [Performance Philosophy](./performance.md) | MVP tech choices and when to optimize |
+| [Performance Philosophy](./performance.md) | MVP tech choices, TTFT checklist, distributed pitfalls |
 
 Each file is self-contained. Cross-links use relative paths so they work on GitHub and locally.

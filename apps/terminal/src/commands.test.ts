@@ -53,6 +53,23 @@ describe("slash commands", () => {
     expect(result?.message).toContain("fresh session");
   });
 
+  test("/exit and /quit request quit", () => {
+    expect(parseSlashCommand("/exit")).toEqual({ actions: [], exit: true });
+    expect(parseSlashCommand("/quit")).toEqual({ actions: [], exit: true });
+  });
+
+  test("runSlashCommand calls onExit for /exit", () => {
+    let exited = false;
+    const actions: Array<{ type: string }> = [];
+    runSlashCommand("/exit", (a) => actions.push(a), {
+      onExit: () => {
+        exited = true;
+      },
+    });
+    expect(exited).toBe(true);
+    expect(actions).toEqual([{ type: "SET_INPUT", input: "" }]);
+  });
+
   test("unknown command returns error message", () => {
     const result = parseSlashCommand("/foobar");
     expect(result?.message).toContain("Unknown command");

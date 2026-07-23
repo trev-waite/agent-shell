@@ -291,6 +291,30 @@ export function createPostgresEventProjector(
         await Promise.all(applyProjection(tx as unknown as RelayPostgresDatabase, event));
       });
     },
+    async persistBatch(events: RelayEvent[]): Promise<void> {
+      if (events.length === 0) return;
+      if (events.length === 1) {
+        await this.persist(events[0]!);
+        return;
+      }
+      await db.transaction(async (tx) => {
+        for (const event of events) {
+          const inserted = await tx
+            .insert(schema.pgEvents)
+            .values({
+              id: event.id,
+              sessionId: event.sessionId,
+              type: event.type,
+              timestamp: event.timestamp,
+              payload: JSON.stringify(event.payload),
+            })
+            .onConflictDoNothing()
+            .returning({ id: schema.pgEvents.id });
+          if (inserted.length === 0) continue;
+          await Promise.all(applyProjection(tx as unknown as RelayPostgresDatabase, event));
+        }
+      });
+    },
   };
 }
 

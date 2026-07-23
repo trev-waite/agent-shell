@@ -27,7 +27,7 @@ bun run dev:terminal
 | `bun run dev:terminal` | Ink chat UI (connects via `@relay/sdk`) |
 | `bun run dev` | Both via Turborepo — terminal input may not work; prefer two terminals |
 
-Type a prompt and press Enter. Follow-up messages continue the same conversation (full history is sent to the model). Use **/** for a command palette (`/model`, `/session`, `/theme`, `/new`, `/help`). Press **Tab** or **Ctrl+O** to open the model picker. If the agent is still replying, your next message is **queued** and shown above the input bar until it sends. Tool activity appears inline under your message; open **/session** (or **Ctrl+P**) for trace and metrics in an overlay above the input. Press **Esc** to close overlays, then exit; **Ctrl+C** quits immediately.
+Type a prompt and press Enter. Follow-up messages continue the same conversation (full history is sent to the model). Use **/** for a command palette (`/model`, `/session`, `/theme`, `/new`, `/exit`, `/help`). Press **Tab** or **Ctrl+O** to open the model picker. If the agent is still replying, your next message is **queued** and shown above the input bar until it sends. Tool activity appears inline under your message; open **/session** (or **Ctrl+P**) for trace and metrics in an overlay above the input. Press **Esc** to close overlays, then exit; **/exit** or **Ctrl+C** quits immediately.
 
 Run **/help** in the TUI for the full command and keyboard list.
 
@@ -38,7 +38,7 @@ All shortcuts use **Control (^)**, not Command (⌘). On macOS, ⌘ shortcuts ar
 | Key | Action |
 |-----|--------|
 | Enter | Send prompt (works with session overlay open) |
-| `/` | Slash command palette — `/model`, `/session`, `/theme`, `/new`, `/help` |
+| `/` | Slash command palette — `/model`, `/session`, `/theme`, `/new`, `/exit`, `/help` |
 | Tab / **Ctrl+O** | Open model picker overlay |
 | **Ctrl+P** | Toggle session panel (trace + metrics) |
 | **Ctrl+T** | Cycle color theme (auto → dark → light) |

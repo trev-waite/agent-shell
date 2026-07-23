@@ -129,4 +129,68 @@ describe("createProjectorEventSink", () => {
     await expect(sink.flush("good")).resolves.toBeUndefined();
     await expect(sink.flush("bad")).rejects.toThrow("bad session");
   });
+
+  test("token batching persists multiple tokens in one persistBatch call", async () => {
+    const batches: RelayEvent[][] = [];
+    const sink = createProjectorEventSink(
+      {
+        async persist() {
+          throw new Error("persist should not be called for multi-token batch");
+        },
+        async persistBatch(events) {
+          batches.push(events);
+        },
+      },
+      { tokenBatchSize: 3, tokenBatchFlushMs: 50 },
+    );
+
+    const make = (id: string): RelayEvent => ({
+      id,
+      sessionId: "sess-1",
+      type: "token.streamed",
+      timestamp: Date.now(),
+      payload: { token: id, messageId: "m1" },
+    });
+
+    void sink.write(make("t1"));
+    void sink.write(make("t2"));
+    void sink.write(make("t3"));
+    await sink.flush();
+
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.map((e) => e.id)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  test("non-token event flushes pending token batch first", async () => {
+    const order: string[] = [];
+    const sink = createProjectorEventSink(
+      {
+        async persist(event) {
+          order.push(`persist:${event.type}:${event.id}`);
+        },
+        async persistBatch(events) {
+          order.push(`batch:${events.map((e) => e.id).join(",")}`);
+        },
+      },
+      { tokenBatchSize: 10, tokenBatchFlushMs: 5_000 },
+    );
+
+    void sink.write({
+      id: "t1",
+      sessionId: "sess-1",
+      type: "token.streamed",
+      timestamp: Date.now(),
+      payload: { token: "a", messageId: "m1" },
+    });
+    void sink.write({
+      id: "done",
+      sessionId: "sess-1",
+      type: "message.completed",
+      timestamp: Date.now(),
+      payload: { messageId: "m1", role: "assistant", content: "a" },
+    });
+    await sink.flush();
+
+    expect(order).toEqual(["batch:t1", "batch:done"]);
+  });
 });

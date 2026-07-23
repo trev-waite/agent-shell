@@ -9,6 +9,11 @@ export interface EventStore {
 /** Persists an event and its derived projections atomically. */
 export interface EventProjector {
   persist(event: RelayEvent): Promise<void>;
+  /**
+   * Optional: persist multiple events in one transaction.
+   * Used by EventSink token batching; falls back to sequential `persist` when absent.
+   */
+  persistBatch?(events: RelayEvent[]): Promise<void>;
 }
 
 export interface ExecutionStore {

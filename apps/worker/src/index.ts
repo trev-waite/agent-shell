@@ -10,8 +10,10 @@ import {
   claimIdempotencyKey,
   claimNextTask,
   completeIdempotencyKey,
+  ensureTaskGroup,
   getIdempotencyState,
   heartbeatTask,
+  reclaimIdleTask,
   releaseIdempotencyKey,
   releaseSessionTask,
 } from "@relay/dispatch";
@@ -76,8 +78,17 @@ async function main() {
   const geminiReasoning = parseGeminiReasoning(process.env.GEMINI_REASONING);
 
   const redis = await connectRedis(redisUrl);
+  // Blocking XREADGROUP must not share a connection with lease/XADD/heartbeat —
+  // node-redis queues other commands behind BLOCK, which stalls live events by
+  // up to blockMs and can leave admission held until the claim times out.
+  const claimRedis = redis.duplicate();
+  await claimRedis.connect();
   const { store, projector, close: closeDb } = await openPostgresStorage(databaseUrl);
-  const eventSink = createProjectorEventSink(projector);
+  const eventSink = createProjectorEventSink(projector, {
+    tokenBatchSize: 32,
+    tokenBatchFlushMs: 10,
+  });
+  const traceTiming = process.env.RELAY_TRACE_TIMING === "1";
 
   const toolRegistry = createToolRegistry();
   registerTools(toolRegistry, workspaceDir);
@@ -89,6 +100,24 @@ async function main() {
   });
 
   const livePublisher = createRedisLiveEventPublisher({ redis });
+  const firstLiveLogged = new Set<string>();
+  const runtimeLivePublisher = traceTiming
+    ? {
+        ...livePublisher,
+        publish(sessionId: string, event: Parameters<typeof livePublisher.publish>[1]) {
+          if (
+            !firstLiveLogged.has(sessionId) &&
+            (event.type === "token.streamed" || event.type === "message.started")
+          ) {
+            firstLiveLogged.add(sessionId);
+            console.log(
+              `[timing] live_first session=${sessionId} type=${event.type} id=${event.id}`,
+            );
+          }
+          livePublisher.publish(sessionId, event);
+        },
+      }
+    : livePublisher;
 
   let runtime: ReturnType<typeof createRuntime>;
   const sessionCoordinator = createRedisSessionCoordinator({
@@ -102,7 +131,7 @@ async function main() {
     store,
     eventSink,
     sessionCoordinator,
-    livePublisher,
+    livePublisher: runtimeLivePublisher,
     provider,
     toolRegistry,
     workerId,
@@ -115,6 +144,7 @@ async function main() {
   });
 
   const stopCancel = await sessionCoordinator.startCancelSubscription(workerId);
+  await ensureTaskGroup(redis);
   const configuredConcurrency = Number.parseInt(
     process.env.WORKER_CONCURRENCY ?? "4",
     10,
@@ -122,6 +152,7 @@ async function main() {
   const concurrency = Number.isFinite(configuredConcurrency) && configuredConcurrency > 0
     ? configuredConcurrency
     : 4;
+  const RECLAIM_INTERVAL_MS = 30_000;
 
   console.log(
     `Relay worker ${workerId} ready (workspace=${workspaceDir})`,
@@ -138,6 +169,7 @@ async function main() {
     await Promise.allSettled(activeTasks);
     await livePublisher.flush?.();
     await closeDb();
+    await claimRedis.quit();
     await redis.quit();
     process.exit(0);
   };
@@ -203,23 +235,43 @@ async function main() {
       }
       await ackTask(redis, streamId);
     } catch (err) {
+      // Release admission so clients are not stuck with 409 for the admission TTL.
+      // Ack to avoid a poison PEL retry loop after a hard failure.
       if (taskId) await releaseIdempotencyKey(redis, taskId);
+      if (taskId && task.sessionId) {
+        await releaseSessionTask(redis, task.sessionId, taskId).catch(() => undefined);
+      }
+      await ackTask(redis, streamId).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
-      console.error(`Task ${task.kind} failed; leaving pending for retry:`, message);
+      console.error(`Task ${task.kind} failed:`, message);
     } finally {
       if (heartbeat) clearInterval(heartbeat);
     }
   };
 
+  let lastReclaimAt = Date.now();
   while (!stopping) {
     try {
       if (activeTasks.size >= concurrency) {
         await Promise.race(activeTasks);
         continue;
       }
-      const claimed = await claimNextTask(redis, workerId, 5_000);
+      let claimed = null as Awaited<ReturnType<typeof claimNextTask>>;
+      const now = Date.now();
+      if (now - lastReclaimAt >= RECLAIM_INTERVAL_MS) {
+        lastReclaimAt = now;
+        claimed = await reclaimIdleTask(claimRedis, workerId);
+      }
+      if (!claimed) {
+        claimed = await claimNextTask(claimRedis, workerId, 5_000);
+      }
       if (!claimed) continue;
       if (stopping) break;
+      if (traceTiming) {
+        console.log(
+          `[timing] claim session=${claimed.task.sessionId ?? "?"} stream=${claimed.streamId} kind=${claimed.task.kind}`,
+        );
+      }
       const promise = processTask(claimed.streamId, claimed.task)
         .catch((err) => {
           console.error("Task processing error:", err instanceof Error ? err.message : err);
@@ -227,10 +279,12 @@ async function main() {
         .finally(() => activeTasks.delete(promise));
       activeTasks.add(promise);
     } catch (err) {
-      console.error(
-        "Worker loop error:",
-        err instanceof Error ? err.message : err,
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("Worker loop error:", message);
+      // Stream/group may have been flushed (dev Redis wipe); recreate and continue.
+      if (message.includes("NOGROUP")) {
+        await ensureTaskGroup(claimRedis).catch(() => undefined);
+      }
       await new Promise((r) => setTimeout(r, 1_000));
     }
   }

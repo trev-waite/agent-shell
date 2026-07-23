@@ -127,4 +127,60 @@ describe("attachSessionEventStream", () => {
     liveHandler?.(evt("01HAAB"));
     expect(sent).toEqual(["01HAAA"]);
   });
+
+  test("skipDurableReplay avoids store getBySession for fresh sessions", async () => {
+    let getBySessionCalls = 0;
+    const store: ExecutionStore = {
+      async createSession() {
+        return { id: "sess-1", prompt: "x", createdAt: Date.now() };
+      },
+      async getSession() {
+        return { id: "sess-1", prompt: "x", createdAt: Date.now() };
+      },
+      async listSessions() {
+        return [];
+      },
+      events: {
+        async append() {},
+        async getBySession() {
+          getBySessionCalls += 1;
+          return [evt("01HAAA")];
+        },
+        async getLastEventId() {
+          return null;
+        },
+      },
+    };
+
+    let liveHandler: EventHandler | null = null;
+    const liveBroker = {
+      subscribe(_sessionId: string, handler: EventHandler) {
+        liveHandler = handler;
+        return {
+          ready: Promise.resolve(),
+          unsubscribe: () => {
+            liveHandler = null;
+          },
+        };
+      },
+    };
+
+    const sent: string[] = [];
+    const streamPromise = attachSessionEventStream({
+      store,
+      liveBroker,
+      sessionId: "sess-1",
+      afterId: undefined,
+      skipDurableReplay: true,
+      sendEvent: (e) => sent.push(e.id),
+      onClose: () => {},
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+    liveHandler?.(evt("01HAAC"));
+    await streamPromise;
+
+    expect(getBySessionCalls).toBe(0);
+    expect(sent).toEqual(["01HAAC"]);
+  });
 });

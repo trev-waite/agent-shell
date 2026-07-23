@@ -25,4 +25,4 @@ Internal packages use the workspace protocol: `"@relay/sdk": "workspace:*"`
 
 Turborepo manages build ordering, dev parallelization, and typechecking — not distributed execution.
 
-See [Docker](./docker.md) for the gateway + worker compose profile.
+See [Docker](./docker.md) for the gateway + worker compose profile, dual Redis claim connections, and [worker scaling](./docker.md#scaling-workers).

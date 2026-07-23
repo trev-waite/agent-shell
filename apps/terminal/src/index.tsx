@@ -51,6 +51,10 @@ function cancelServerSession(sessionId: string | null): void {
   });
 }
 
+function createLocalMessageId(): string {
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function submitPrompt(
   prompt: string,
   state: UIState,
@@ -59,6 +63,8 @@ function submitPrompt(
   setSubmitPending: (pending: boolean) => void,
   restoreOnFailure?: QueuedMessage,
 ): void {
+  const localId = createLocalMessageId();
+  dispatch({ type: "ADD_LOCAL_USER_MESSAGE", id: localId, prompt });
   setSubmitPending(true);
 
   const request = state.sessionId
@@ -69,6 +75,7 @@ function submitPrompt(
     dispatch({ type: "SET_SESSION", sessionId });
     subscribeToSession(sessionId, state.lastEventId ?? undefined);
   }).catch((error) => {
+    dispatch({ type: "REMOVE_LOCAL_USER_MESSAGE", id: localId });
     if (restoreOnFailure) {
       dispatch({ type: "RESTORE_QUEUE_HEAD", item: restoreOnFailure });
     }
@@ -86,6 +93,7 @@ function handleInputSubmit(
     submitPending: boolean;
     setSubmitPending: (pending: boolean) => void;
     endSessionStream: () => void;
+    onExit: () => void;
   },
 ): void {
   const prompt = state.input.trim();
@@ -97,6 +105,7 @@ function handleInputSubmit(
         options.endSessionStream();
         cancelServerSession(state.sessionId);
       },
+      onExit: options.onExit,
       menuIndex: state.slashMenuIndex,
     });
     return;
@@ -118,7 +127,7 @@ function TerminalApp() {
   const [state, dispatch] = useReducer(uiReducer, initialState);
   const [animFrame, setAnimFrame] = useState(0);
   const layout = useLayoutMode();
-  const { exit } = useApp();
+  const { exit: inkExit } = useApp();
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const submitPendingRef = useRef(false);
   const stateRef = useRef(state);
@@ -141,6 +150,12 @@ function TerminalApp() {
     unsubscribeRef.current = null;
     dispatch({ type: "SET_STREAM_CONNECTED", connected: false });
   }, []);
+
+  const quit = useCallback(() => {
+    endSessionStream();
+    cancelServerSession(stateRef.current.sessionId);
+    inkExit();
+  }, [endSessionStream, inkExit]);
 
   const subscribeToSession = useCallback((sessionId: string, lastEventId?: string) => {
     unsubscribeRef.current?.();
@@ -303,7 +318,7 @@ function TerminalApp() {
         state: current,
         layout,
         scroll,
-        exit,
+        exit: quit,
         onNewSession: () => {
           endSessionStream();
           cancelServerSession(current.sessionId);
@@ -318,6 +333,7 @@ function TerminalApp() {
           submitPendingRef.current = pending;
         },
         endSessionStream,
+        onExit: quit,
       });
     }
   });
@@ -331,4 +347,16 @@ function TerminalApp() {
   );
 }
 
-render(<TerminalApp />, { stdin: process.stdin, stdout: process.stdout, stderr: process.stderr });
+const { waitUntilExit } = render(<TerminalApp />, {
+  stdin: process.stdin,
+  stdout: process.stdout,
+  stderr: process.stderr,
+  // Handled in-app (Ctrl+C binding + /exit) so we can clean up then process.exit.
+  exitOnCtrlC: false,
+});
+
+void waitUntilExit().then(() => {
+  // Ink unmount restores the TTY; exit the process so bun --watch / leftover
+  // timers do not leave a dead prompt that needs a second Ctrl+C.
+  process.exit(0);
+});

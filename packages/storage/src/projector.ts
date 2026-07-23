@@ -70,6 +70,25 @@ export function createEventProjector(db: RelayDatabase): EventProjector {
         applyProjection(tx, event);
       });
     },
+    async persistBatch(events: RelayEvent[]): Promise<void> {
+      if (events.length === 0) return;
+      if (events.length === 1) {
+        await this.persist(events[0]!);
+        return;
+      }
+      db.transaction((tx) => {
+        for (const event of events) {
+          tx.insert(schema.events).values({
+            id: event.id,
+            sessionId: event.sessionId,
+            type: event.type,
+            timestamp: event.timestamp,
+            payload: JSON.stringify(event.payload),
+          }).run();
+          applyProjection(tx, event);
+        }
+      });
+    },
   };
 }
 
