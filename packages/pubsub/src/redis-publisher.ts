@@ -163,7 +163,14 @@ export function createSessionLiveBroker(redis: RedisClientType): {
               if (typeof raw !== "string") continue;
               const event = JSON.parse(raw) as RelayEvent;
               for (const handler of [...handlers]) {
-                handler(event);
+                try {
+                  handler(event);
+                } catch (err) {
+                  console.error(
+                    `[SessionLiveBroker] handler failed for ${sessionId}:`,
+                    err instanceof Error ? err.message : err,
+                  );
+                }
               }
             }
           }

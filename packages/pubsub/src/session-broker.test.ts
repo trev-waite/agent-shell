@@ -59,4 +59,44 @@ describe("createSessionLiveBroker", () => {
     subB.unsubscribe();
     expect(destroyed).toBe(true);
   });
+
+  test("continues fanout when one handler throws", async () => {
+    let delivered = false;
+    const reader = {
+      async connect() {},
+      xRead: async () => {
+        if (delivered) {
+          await new Promise((r) => setTimeout(r, 200));
+          return null;
+        }
+        delivered = true;
+        return [
+          {
+            name: "relay:events:sess-1",
+            messages: [
+              {
+                id: "1-0",
+                message: { event: JSON.stringify(evt("01LIVE")) },
+              },
+            ],
+          },
+        ];
+      },
+      destroy() {},
+    };
+    const redis = { duplicate: () => reader } as never;
+
+    const broker = createSessionLiveBroker(redis);
+    const good: string[] = [];
+    const subBad = broker.subscribe("sess-1", () => {
+      throw new Error("closed connection");
+    });
+    const subGood = broker.subscribe("sess-1", (e) => good.push(e.id));
+
+    await subGood.ready;
+    await new Promise((r) => setTimeout(r, 100));
+    expect(good).toEqual(["01LIVE"]);
+    subBad.unsubscribe();
+    subGood.unsubscribe();
+  });
 });

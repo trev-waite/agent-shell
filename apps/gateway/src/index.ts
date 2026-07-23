@@ -77,9 +77,6 @@ async function main() {
   const coordinator = createRedisSessionCoordinator({ redis });
   const liveBroker = createSessionLiveBroker(redis);
   const traceTiming = process.env.RELAY_TRACE_TIMING === "1";
-  /** Fresh sessions skip durable SSE replay for a short window (no Postgres RTT before live). */
-  const freshSessions = new Map<string, number>();
-  const FRESH_SESSION_TTL_MS = 30_000;
 
   const executor = createQueueDurableExecutor({
     redis,
@@ -147,7 +144,6 @@ async function main() {
       prompt,
       ...(model !== undefined ? { model } : {}),
     });
-    freshSessions.set(sessionId, enqueueAt);
     if (traceTiming) {
       console.log(
         `[timing] enqueue session=${sessionId} ms=${Date.now() - enqueueAt}`,
@@ -229,20 +225,12 @@ async function main() {
       });
 
       try {
-        const createdAt = freshSessions.get(sessionId);
-        const skipDurableReplay =
-          afterId === undefined &&
-          createdAt !== undefined &&
-          Date.now() - createdAt < FRESH_SESSION_TTL_MS;
-        if (createdAt !== undefined) freshSessions.delete(sessionId);
-
         let firstSseLogged = false;
         await attachSessionEventStream({
           store,
           liveBroker,
           sessionId,
           afterId,
-          skipDurableReplay,
           sendEvent: (event: RelayEvent) => {
             if (reply.raw.writableEnded) return;
             if (traceTiming && !firstSseLogged) {
