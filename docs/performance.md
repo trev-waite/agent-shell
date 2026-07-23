@@ -12,6 +12,28 @@ Relay intentionally uses **TypeScript + Bun** for the MVP runtime.
 
 5. **Measure before refactoring** — Profile when event throughput exceeds local SQLite write capacity or SSE fanout becomes measurable.
 
+## Baseline timing checklist (local vs distributed)
+
+Local Bun (`dev:server`) runs the ReAct loop in-process over SQLite. Distributed mode (Docker or hybrid) adds Redis queue + live hops and Postgres, so **time-to-first-event** is usually higher even when absolute wall time is still LLM-dominated.
+
+Use the **same prompt** across three modes and record TTFT / first SSE / wall time:
+
+| Mode | How to run |
+|------|------------|
+| Local monolith | `bun run dev:server` (+ terminal/web) |
+| Hybrid distributed | `docker compose -f docker-compose.yml -f docker-compose.local.yml up redis postgres`, then `bun run dev:gateway` + `bun run dev:worker` |
+| Full Docker | `docker compose up --build --scale worker=1` |
+
+Capture:
+
+1. Terminal / `usage.updated` **TTFT** and tok/s (product metrics).
+2. Wall clock until the first SSE `token.streamed` (or `message.started`) reaches the client.
+3. Optional hop logs: set `RELAY_TRACE_TIMING=1` on gateway and worker. Logs include enqueue, claim, first live publish, and SSE emit timestamps (`[timing] …`).
+
+Expected: hybrid ≈ full Docker for request latency (same architecture); local Bun still wins on TTFT for trivial turns; full Docker may add Mac/container overhead on top of hybrid.
+
+**Distributed pitfall (fixed in workers):** blocking task claim and live-event `XADD` must use **separate Redis connections**. Sharing one connection lets `XREADGROUP BLOCK` stall publishes by up to ~5s and can leave admission held (`409` on continue). See [docker.md](./docker.md#performance-notes). Scale throughput with **more worker replicas**, not more Redis connections per loop.
+
 ## LLM token efficiency (`@relay/providers`)
 
 Relay uses **AI SDK v7** as the Gemini transport only — not as the agent framework. Token-oriented optimizations live in the provider adapter:

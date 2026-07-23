@@ -1,0 +1,12 @@
+# Optional worker workspace mount (local tool access).
+# Usage:
+#   RELAY_WORKSPACE=/path/to/project docker compose \
+#     -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.workspace.yml \
+#     up --build --scale worker=2
+#
+# Workspace mounts are not a sandbox — same light tool guardrails as local.
+
+services:
+  worker:
+    volumes:
+      - ${RELAY_WORKSPACE:?Set RELAY_WORKSPACE to a host path (e.g. export RELAY_WORKSPACE=$PWD)}:/workspace:ro

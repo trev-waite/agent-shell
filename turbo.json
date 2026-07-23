@@ -3,9 +3,17 @@
   "globalPassThroughEnv": [
     "GEMINI_API_KEY",
     "GEMINI_MODEL",
+    "GEMINI_REASONING",
     "RELAY_PORT",
+    "RELAY_HOST",
     "RELAY_DB_PATH",
+    "RELAY_DATABASE_URL",
+    "REDIS_URL",
+    "WORKER_ID",
+    "WORKER_CONCURRENCY",
+    "WORKSPACE_DIR",
     "RELAY_URL",
+    "RELAY_CORS_ORIGINS",
     "BUN_PUBLIC_RELAY_URL"
   ],
   "tasks": {

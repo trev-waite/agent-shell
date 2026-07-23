@@ -10,7 +10,7 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 - [ ] **Headless runtime entrypoint** — Thin CLI (e.g. `relay exec --prompt "..."`) that runs `@relay/runtime` directly without HTTP. Proves the runtime is independent of transport; useful for scripts and CI.
 
-- [ ] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite transaction per N tokens or per assistant message). Fanout stays per-token; only persistence batches.
+- [x] **Token write batching** — Optional batching in `EventSink` for high-frequency `token.streamed` events (single SQLite/Postgres transaction per N tokens or on non-token boundary). Fanout stays per-token; only persistence batches.
 
 - [ ] **Server integration tests** — HTTP-level tests for SSE disconnect (client closes, execution completes), `Last-Event-ID` replay, and multi-subscriber fanout through the real Fastify server.
 
@@ -22,9 +22,9 @@ Track deferred work, optimizations, and North Star follow-ups.
 
 - [ ] **Session metadata** — Optional `ownerId`, `tenantId`, `workspaceId` on `Session` (nullable for local-first).
 
-- [ ] **EventSink error policy** — Stop swallowing persist failures in `createProjectorEventSink`; log/metric and define retry or session-fail behavior.
+- [x] **EventSink error policy** — Persist failures tracked; `flush()` rejects; runtime logs + emits `PERSIST_FAILED` on flush failure.
 
-- [ ] **Async EventStore API** — `append(): Promise<void>`, cursor/stream reads, pagination for large sessions (needed for remote stores).
+- [x] **Async EventStore API** — `append(): Promise<void>`, async reads; SQLite wrapped, Postgres native.
 
 - [ ] **Dedicated architecture doc** — Extract `docs/architecture.md` from README with North Star invariants and package dependency diagram.
 
@@ -96,16 +96,21 @@ packages/
 
 ### Implementation checklist (distributed split)
 
-- [ ] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
-- [ ] **`apps/gateway`** — Slim `apps/server`: HTTP/SSE only; swap local executor for queue executor; no direct ReActLoop.
-- [ ] **`packages/coordination`** — Redis-backed `SessionCoordinator`.
-- [ ] **`packages/dispatch`** — Queue-backed `DurableExecutor` for gateway.
-- [ ] **`packages/pubsub`** — Redis-backed `LiveEventPublisher` (gateway subscribes, workers publish).
-- [ ] **Remote storage adapter** — Shared `EventSink` / `ExecutionStore` replacing SQLite for multi-pod durability.
+- [x] **`apps/worker`** — Queue consumer loop; wires `createRuntime` + `createLocalDurableExecutor` + `WORKER_ID` env.
+- [x] **`apps/gateway`** — Slim HTTP/SSE only; queue executor; no direct ReActLoop; subscribe-then-replay SSE.
+- [x] **`packages/coordination`** — Redis-backed `SessionCoordinator`.
+- [x] **`packages/dispatch`** — Redis Streams `DurableExecutor` for gateway.
+- [x] **`packages/pubsub`** — Redis Streams `LiveEventPublisher` + `SessionLiveBroker`.
+- [x] **Remote storage adapter** — Postgres `ExecutionStore` / `EventProjector` (async interfaces); SQLite remains for local `apps/server`.
+- [x] **Docker packaging** — Role-specific `gateway` / `worker` image targets + prod-shaped compose (local/workspace overrides); non-root `relay` user (see [docs/docker.md](docs/docker.md)).
+
+- [ ] **Worker autoscaling** — Production: scale **worker** replicas only (gateway stays ×1) via **KEDA Redis Streams scaler** (or HPA on stream lag/pending for `relay-workers`), with `minReplicas ≥ 1`, Postgres pool / Gemini quota ceilings, and slow scale-down. Local: `docker compose up --scale worker=N`. See [docs/docker.md § Scaling workers](docs/docker.md#scaling-workers).
 
 ---
 
 ## Medium priority
+
+- [ ] **Slim gateway runtime imports** — Split `@relay/runtime` so gateway can import projections/sanitize/checkpoint helpers without pulling `@relay/providers` / AI SDK into the gateway image.
 
 - [ ] **OpenTelemetry for production** — When deploying beyond local-first: add `@ai-sdk/otel`, `registerTelemetry()` in `apps/server`, wire an OTel collector/exporter (Datadog, Langfuse, Grafana, etc.), and `RELAY_TELEMETRY=1` env. Complements `usage.updated` (product UI) with cross-session ops tracing; not a replacement for the event log.
 
@@ -113,7 +118,7 @@ packages/
 
 - [ ] **Ephemeral execution mode** — Optional runtime wiring with in-memory store (no SQLite) for tests and throwaway runs.
 
-- [ ] **Coordinator-backed session status** — Replace or augment `deriveSessionStatus` time heuristic with lease/heartbeat awareness for distributed setups.
+- [x] **Coordinator-backed session status** — Gateway `getStatus` merges `deriveSessionStatus` with `resolveOwner`.
 
 ---
 

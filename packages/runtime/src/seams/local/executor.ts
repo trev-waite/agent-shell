@@ -25,6 +25,7 @@ export function createLocalDurableExecutor(opts: LocalDurableExecutorOptions): D
           }
           const sessionId = await runtime.execute({
             prompt: task.prompt,
+            ...(task.sessionId !== undefined ? { sessionId: task.sessionId } : {}),
             ...(task.model !== undefined ? { model: task.model } : {}),
           });
           return { sessionId };
@@ -67,7 +68,7 @@ export function createLocalDurableExecutor(opts: LocalDurableExecutorOptions): D
       const owner = await coordinator.resolveOwner(sessionId);
       return {
         sessionId,
-        status: runtime.getSessionStatus(sessionId),
+        status: await runtime.getSessionStatus(sessionId),
         active: runtime.isSessionActive(sessionId),
         ...(owner !== null ? { workerId: owner } : {}),
       };

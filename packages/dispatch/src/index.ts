@@ -1,0 +1,25 @@
+export {
+  createQueueDurableExecutor,
+  ensureTaskGroup,
+  claimNextTask,
+  reclaimIdleTask,
+  ackTask,
+  claimIdempotencyKey,
+  getIdempotencyState,
+  heartbeatTask,
+  completeIdempotencyKey,
+  releaseIdempotencyKey,
+  reserveSessionTask,
+  releaseSessionTask,
+  type QueueDurableExecutorOptions,
+  type ClaimedTask,
+  type IdempotencyState,
+} from "./queue-executor.js";
+export {
+  TASK_STREAM_KEY,
+  TASK_GROUP,
+  IDEMPOTENCY_KEY_PREFIX,
+  SESSION_ADMISSION_KEY_PREFIX,
+  idempotencyKey,
+  sessionAdmissionKey,
+} from "./keys.js";

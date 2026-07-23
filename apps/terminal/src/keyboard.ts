@@ -163,10 +163,11 @@ export const KEY_BINDINGS: KeyBinding[] = [
     match: (_input, key) => key.return,
     when: (ctx) => overlayIs(ctx, "slash"),
     run: (_input, ctx, dispatch) => {
-      const options = ctx.onNewSession
-        ? { onNewSession: ctx.onNewSession, menuIndex: ctx.state.slashMenuIndex }
-        : { menuIndex: ctx.state.slashMenuIndex };
-      runSlashCommand(ctx.state.input, dispatch, options);
+      runSlashCommand(ctx.state.input, dispatch, {
+        ...(ctx.onNewSession ? { onNewSession: ctx.onNewSession } : {}),
+        onExit: ctx.exit,
+        menuIndex: ctx.state.slashMenuIndex,
+      });
       return true;
     },
   },

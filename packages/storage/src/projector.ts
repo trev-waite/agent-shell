@@ -58,7 +58,7 @@ function applyProjection(tx: RelayDatabase, event: RelayEvent): void {
 
 export function createEventProjector(db: RelayDatabase): EventProjector {
   return {
-    persist(event: RelayEvent): void {
+    async persist(event: RelayEvent): Promise<void> {
       db.transaction((tx) => {
         tx.insert(schema.events).values({
           id: event.id,
@@ -68,6 +68,25 @@ export function createEventProjector(db: RelayDatabase): EventProjector {
           payload: JSON.stringify(event.payload),
         }).run();
         applyProjection(tx, event);
+      });
+    },
+    async persistBatch(events: RelayEvent[]): Promise<void> {
+      if (events.length === 0) return;
+      if (events.length === 1) {
+        await this.persist(events[0]!);
+        return;
+      }
+      db.transaction((tx) => {
+        for (const event of events) {
+          tx.insert(schema.events).values({
+            id: event.id,
+            sessionId: event.sessionId,
+            type: event.type,
+            timestamp: event.timestamp,
+            payload: JSON.stringify(event.payload),
+          }).run();
+          applyProjection(tx, event);
+        }
       });
     },
   };

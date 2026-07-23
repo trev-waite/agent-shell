@@ -139,6 +139,7 @@ export class ReActLoop implements ExecutionLoop {
 
         this.saveCheckpoint(emit, iterations);
       } catch (err) {
+        if (this.cancelled || this.abortController.signal.aborted) return;
         const message = err instanceof Error ? err.message : String(err);
         emit({
           id: ulid(),

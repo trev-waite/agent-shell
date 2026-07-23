@@ -1,0 +1,16 @@
+# Local overrides for the distributed compose profile.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up --build --scale worker=2
+#   docker compose -f docker-compose.yml -f docker-compose.local.yml up redis postgres
+#
+# Publishes Redis/Postgres to the host so bun run dev:gateway / dev:worker can connect.
+# For a host project mount, also add docker-compose.workspace.yml (see docs/docker.md).
+
+services:
+  redis:
+    ports:
+      - "6379:6379"
+
+  postgres:
+    ports:
+      - "5432:5432"

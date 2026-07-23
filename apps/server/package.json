@@ -9,14 +9,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fastify/cors": "^11.2.0",
+    "@fastify/cors": "^11.3.0",
     "@relay/providers": "workspace:*",
     "@relay/runtime": "workspace:*",
     "@relay/storage": "workspace:*",
     "@relay/tool-registry": "workspace:*",
     "@relay/tools": "workspace:*",
     "@relay/types": "workspace:*",
-    "fastify": "^5.8.5"
+    "fastify": "^5.10.0"
   },
   "devDependencies": {
     "@types/bun": "latest",

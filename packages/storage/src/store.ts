@@ -83,7 +83,7 @@ function parseEvent(row: typeof schema.events.$inferSelect): RelayEvent {
 
 export function createEventStore(db: RelayDatabase): EventStore {
   return {
-    append(event: RelayEvent): void {
+    async append(event: RelayEvent): Promise<void> {
       db.insert(schema.events).values({
         id: event.id,
         sessionId: event.sessionId,
@@ -93,27 +93,28 @@ export function createEventStore(db: RelayDatabase): EventStore {
       }).run();
     },
 
-    getBySession(sessionId: string, afterId?: string): RelayEvent[] {
-      let query = db
+    async getBySession(sessionId: string, afterId?: string): Promise<RelayEvent[]> {
+      const rows = db
         .select()
         .from(schema.events)
         .where(eq(schema.events.sessionId, sessionId))
-        .orderBy(asc(schema.events.timestamp), asc(schema.events.id));
-
-      const rows = query.all();
+        .orderBy(asc(schema.events.timestamp), asc(schema.events.id))
+        .all();
 
       if (afterId) {
         const afterIndex = rows.findIndex((r) => r.id === afterId);
         if (afterIndex >= 0) {
           return rows.slice(afterIndex + 1).map(parseEvent);
         }
-        return [];
+        // Stale/unknown cursor (e.g. live-ahead-of-durable Last-Event-ID):
+        // fall back to full session replay rather than silently returning [].
+        return rows.map(parseEvent);
       }
 
       return rows.map(parseEvent);
     },
 
-    getLastEventId(sessionId: string): string | null {
+    async getLastEventId(sessionId: string): Promise<string | null> {
       const rows = db
         .select()
         .from(schema.events)
@@ -132,7 +133,7 @@ export function createExecutionStore(db: RelayDatabase): ExecutionStore {
   return {
     events: eventStore,
 
-    createSession(prompt: string): Session {
+    async createSession(prompt: string): Promise<Session> {
       const session: Session = {
         id: crypto.randomUUID(),
         prompt,
@@ -146,7 +147,7 @@ export function createExecutionStore(db: RelayDatabase): ExecutionStore {
       return session;
     },
 
-    getSession(sessionId: string): Session | null {
+    async getSession(sessionId: string): Promise<Session | null> {
       const row = db
         .select()
         .from(schema.sessions)
@@ -156,7 +157,7 @@ export function createExecutionStore(db: RelayDatabase): ExecutionStore {
       return { id: row.id, prompt: row.prompt, createdAt: row.createdAt };
     },
 
-    listSessions(): Session[] {
+    async listSessions(): Promise<Session[]> {
       return db.select().from(schema.sessions).all().map((row) => ({
         id: row.id,
         prompt: row.prompt,

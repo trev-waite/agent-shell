@@ -13,10 +13,12 @@ export interface SlashCommandDef {
 export interface SlashCommandResult {
   actions: UIAction[];
   message?: string;
+  exit?: boolean;
 }
 
 export interface RunSlashCommandOptions {
   onNewSession?: () => void;
+  onExit?: () => void;
   menuIndex?: number;
 }
 
@@ -43,6 +45,11 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
     message: "New conversation — cancelled in-flight work; next message starts a fresh session",
   },
   {
+    name: "exit",
+    description: "Quit the terminal",
+    actions: [],
+  },
+  {
     name: "help",
     description: "List all commands",
     actions: [],
@@ -52,8 +59,15 @@ export const SLASH_COMMANDS: SlashCommandDef[] = [
 /** Legacy aliases — open the combined session panel. */
 const SESSION_ALIASES = new Set(["trace", "metrics"]);
 
+/** Alias for /exit. */
+const EXIT_ALIASES = new Set(["quit"]);
+
 function isKnownSlashName(name: string): boolean {
-  return SLASH_COMMANDS.some((c) => c.name === name) || SESSION_ALIASES.has(name);
+  return (
+    SLASH_COMMANDS.some((c) => c.name === name) ||
+    SESSION_ALIASES.has(name) ||
+    EXIT_ALIASES.has(name)
+  );
 }
 
 /** Use typed input when it's a full command; otherwise fall back to the palette selection. */
@@ -124,6 +138,10 @@ export function parseSlashCommand(input: string): SlashCommandResult | null {
     return { actions: [{ type: "OPEN_OVERLAY", panel: "session" }] };
   }
 
+  if (name === "exit" || EXIT_ALIASES.has(name)) {
+    return { actions: [], exit: true };
+  }
+
   const def = SLASH_COMMANDS.find((c) => c.name === name);
   if (def) {
     if (name === "theme") {
@@ -165,6 +183,12 @@ export function runSlashCommand(
   const resolved = resolveSlashInput(input, options?.menuIndex ?? 0);
   const result = parseSlashCommand(resolved);
   if (!result) return false;
+
+  if (result.exit) {
+    dispatch({ type: "SET_INPUT", input: "" });
+    options?.onExit?.();
+    return true;
+  }
 
   if (result.actions.some((action) => action.type === "NEW_SESSION")) {
     options?.onNewSession?.();

@@ -17,12 +17,12 @@ afterEach(() => {
 });
 
 describe("createEventProjector", () => {
-  test("persists checkpoint.saved event and snapshot projection", () => {
+  test("persists checkpoint.saved event and snapshot projection", async () => {
     migrateDatabase(DB_PATH);
     const db = createDatabase(DB_PATH);
     const store = createExecutionStore(db);
     const projector = createEventProjector(db);
-    const session = store.createSession("checkpoint test");
+    const session = await store.createSession("checkpoint test");
 
     const checkpointId = "chk-1";
     const data = { iteration: 1, messages: [{ role: "user", content: "hi" }] };
@@ -35,9 +35,9 @@ describe("createEventProjector", () => {
       payload: { checkpointId, label: "iteration-1", data },
     };
 
-    projector.persist(event);
+    await projector.persist(event);
 
-    expect(store.events.getBySession(session.id)).toHaveLength(1);
+    expect(await store.events.getBySession(session.id)).toHaveLength(1);
     expect(getCheckpoint(db, session.id, checkpointId)).toEqual(data);
   });
 });

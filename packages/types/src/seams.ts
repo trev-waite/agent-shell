@@ -55,11 +55,14 @@ export interface SessionCoordinator {
 export interface LiveEventPublisher {
   publish(sessionId: string, event: RelayEvent): void;
   subscribe(sessionId: string, handler: EventHandler): () => void;
+  /** Wait for queued publications, optionally scoped to one session. */
+  flush?(sessionId?: string): Promise<void>;
 }
 
 export interface EventSink {
   write(event: RelayEvent): Promise<void>;
-  flush(): Promise<void>;
+  /** Wait for queued writes, optionally scoped to one session. */
+  flush(sessionId?: string): Promise<void>;
 }
 
 export interface Worker {

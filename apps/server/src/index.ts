@@ -94,7 +94,10 @@ async function main() {
   const db = createDatabase(DB_PATH);
   const store = createExecutionStore(db);
   const projector = createEventProjector(db);
-  const eventSink = createProjectorEventSink(projector);
+  const eventSink = createProjectorEventSink(projector, {
+    tokenBatchSize: 32,
+    tokenBatchFlushMs: 10,
+  });
   const toolRegistry = createToolRegistry();
   registerTools(toolRegistry);
 
@@ -287,7 +290,7 @@ async function main() {
     "/sessions/:id/checkpoints",
     async (request, reply) => {
       const { id: sessionId } = request.params;
-      const checkpoints = runtime.listCheckpoints(sessionId);
+      const checkpoints = await runtime.listCheckpoints(sessionId);
       if (checkpoints === null) {
         return reply.status(404).send({ error: "Session not found" });
       }
