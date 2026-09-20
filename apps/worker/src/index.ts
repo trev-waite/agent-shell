@@ -6,19 +6,14 @@ import {
   createRedisSessionCoordinator,
 } from "@relay/coordination";
 import {
-  ackTask,
   claimIdempotencyKey,
-  claimNextTask,
   completeIdempotencyKey,
   ensureTaskGroup,
   getIdempotencyState,
-  heartbeatTask,
-  reclaimIdleTask,
   releaseIdempotencyKey,
   releaseSessionTask,
 } from "@relay/dispatch";
 import type { ExecutionTask } from "@relay/types";
-import { createRedisLiveEventPublisher } from "@relay/pubsub";
 import {
   createLocalDurableExecutor,
   createRuntime,
@@ -33,6 +28,7 @@ import {
   DEFAULT_GEMINI_MODEL,
   isGeminiModelId,
 } from "@relay/types";
+import { bindWorkerRedis, createWorkerRedisClients } from "./worker-redis.js";
 
 const REASONING_LEVELS = new Set<ReasoningLevel>([
   "minimal",
@@ -78,11 +74,8 @@ async function main() {
   const geminiReasoning = parseGeminiReasoning(process.env.GEMINI_REASONING);
 
   const redis = await connectRedis(redisUrl);
-  // Blocking XREADGROUP must not share a connection with lease/XADD/heartbeat —
-  // node-redis queues other commands behind BLOCK, which stalls live events by
-  // up to blockMs and can leave admission held until the claim times out.
-  const claimRedis = redis.duplicate();
-  await claimRedis.connect();
+  const { workRedis, claimRedis } = await createWorkerRedisClients(redis);
+  const redisOps = bindWorkerRedis({ workRedis, claimRedis });
   const { store, projector, close: closeDb } = await openPostgresStorage(databaseUrl);
   const eventSink = createProjectorEventSink(projector, {
     tokenBatchSize: 32,
@@ -99,7 +92,7 @@ async function main() {
     ...(geminiReasoning !== undefined ? { reasoning: geminiReasoning } : {}),
   });
 
-  const livePublisher = createRedisLiveEventPublisher({ redis });
+  const livePublisher = redisOps.createLivePublisher();
   const firstLiveLogged = new Set<string>();
   const runtimeLivePublisher = traceTiming
     ? {
@@ -191,7 +184,7 @@ async function main() {
       await sessionCoordinator.consumeCancelRequest(task.sessionId, taskId);
       await completeIdempotencyKey(redis, taskId);
       await releaseSessionTask(redis, task.sessionId, taskId);
-      await ackTask(redis, streamId);
+      await redisOps.ack(streamId);
       return;
     }
 
@@ -202,7 +195,7 @@ async function main() {
         if (state === "completed") {
           console.log(`Completed duplicate task ${taskId}; acking`);
           if (task.sessionId) await releaseSessionTask(redis, task.sessionId, taskId);
-          await ackTask(redis, streamId);
+          await redisOps.ack(streamId);
         }
         return;
       }
@@ -211,8 +204,7 @@ async function main() {
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     try {
       heartbeat = setInterval(() => {
-        void heartbeatTask(
-          redis,
+        void redisOps.heartbeat(
           workerId,
           streamId,
           taskId,
@@ -233,7 +225,7 @@ async function main() {
       if (taskId && task.sessionId) {
         await releaseSessionTask(redis, task.sessionId, taskId);
       }
-      await ackTask(redis, streamId);
+      await redisOps.ack(streamId);
     } catch (err) {
       // Release admission so clients are not stuck with 409 for the admission TTL.
       // Ack to avoid a poison PEL retry loop after a hard failure.
@@ -241,7 +233,7 @@ async function main() {
       if (taskId && task.sessionId) {
         await releaseSessionTask(redis, task.sessionId, taskId).catch(() => undefined);
       }
-      await ackTask(redis, streamId).catch(() => undefined);
+      await redisOps.ack(streamId).catch(() => undefined);
       const message = err instanceof Error ? err.message : String(err);
       console.error(`Task ${task.kind} failed:`, message);
     } finally {
@@ -256,14 +248,14 @@ async function main() {
         await Promise.race(activeTasks);
         continue;
       }
-      let claimed = null as Awaited<ReturnType<typeof claimNextTask>>;
+      let claimed = null as Awaited<ReturnType<typeof redisOps.claimNext>>;
       const now = Date.now();
       if (now - lastReclaimAt >= RECLAIM_INTERVAL_MS) {
         lastReclaimAt = now;
-        claimed = await reclaimIdleTask(claimRedis, workerId);
+        claimed = await redisOps.reclaimIdle(workerId);
       }
       if (!claimed) {
-        claimed = await claimNextTask(claimRedis, workerId, 5_000);
+        claimed = await redisOps.claimNext(workerId);
       }
       if (!claimed) continue;
       if (stopping) break;

@@ -189,6 +189,18 @@ describe("claimNextTask", () => {
     expect(claimed?.task.sessionId).toBe("sess-2");
     expect(autoClaimed).toBe(false);
   });
+
+  test("passes BLOCK to XREADGROUP so Redis can wait for the next task", async () => {
+    let blockMs: number | undefined;
+    const redis = {
+      xReadGroup: async (_group: string, _consumer: string, _key: unknown, opts: { BLOCK?: number }) => {
+        blockMs = opts.BLOCK;
+        return [];
+      },
+    } as never;
+    expect(await claimNextTask(redis, "worker-1", 5_000)).toBeNull();
+    expect(blockMs).toBe(5_000);
+  });
 });
 
 describe("reclaimIdleTask", () => {

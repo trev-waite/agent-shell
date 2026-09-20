@@ -37,4 +37,28 @@ describe("createRedisLiveEventPublisher", () => {
     release.splice(0).forEach((resolve) => resolve());
     await publisher.flush();
   });
+
+  test("publish returns before XADD completes", async () => {
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const redis = {
+      xAdd: async () => {
+        await blocked;
+        return "1-0";
+      },
+    } as never;
+    const publisher = createRedisLiveEventPublisher({ redis });
+    publisher.publish("sess-1", event("t1", "sess-1"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    let flushed = false;
+    const flush = publisher.flush().then(() => {
+      flushed = true;
+    });
+    expect(flushed).toBe(false);
+    release();
+    await flush;
+    expect(flushed).toBe(true);
+  });
 });
