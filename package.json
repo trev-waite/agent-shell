@@ -13,7 +13,8 @@
     "typecheck": "turbo run typecheck",
     "db:generate": "bun run --bun drizzle-kit generate --config packages/storage/drizzle.config.ts",
     "db:migrate": "bun run --bun drizzle-kit migrate --config packages/storage/drizzle.config.ts",
-    "test": "bun test packages/storage/src packages/runtime/src packages/providers/src packages/coordination/src packages/dispatch/src packages/pubsub/src apps/terminal/src apps/server/src apps/web/src apps/gateway/src apps/worker/src"
+    "test": "RELAY_INTEGRATION_TESTS=0 bun test packages/sdk/src packages/storage/src packages/runtime/src packages/providers/src packages/coordination/src packages/dispatch/src packages/pubsub/src apps/terminal/src apps/server/src apps/web/src apps/gateway/src apps/worker/src",
+    "test:integration": "RELAY_INTEGRATION_TESTS=1 bun test packages/coordination/src/redis-coordinator.integration.test.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

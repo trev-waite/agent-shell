@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { RelayEvent } from "@relay/types";
+import { DEFAULT_GEMINI_MODEL, type RelayEvent } from "@relay/types";
 import { uiReducer, initialState } from "./state.js";
 import { isSessionBusy } from "./stateHelpers.js";
 import { buildTraceTimeline, tracesForTurn } from "./projections/trace.js";
@@ -361,7 +361,7 @@ describe("uiReducer UI actions", () => {
           timestamp: 1,
         },
       ],
-      selectedModel: "gemini-3.5-flash-lite" as const,
+      selectedModel: DEFAULT_GEMINI_MODEL,
       colorSchemePreference: "dark" as const,
       streamConnected: true,
       messageQueue: [{ id: "q-1", prompt: "queued", enqueuedAt: 1 }],

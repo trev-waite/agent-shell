@@ -277,14 +277,14 @@ describe("appReducer event projection", () => {
       sessionId: "sess-1",
       type: "message.completed",
       timestamp: 3,
-      payload: { messageId: "m1", content: "hello" },
+      payload: { messageId: "m1", role: "assistant", content: "hello" },
     };
     const done: RelayEvent = {
       id: "s1",
       sessionId: "sess-1",
       type: "session.completed",
       timestamp: 4,
-      payload: {},
+      payload: { iteration: 1 },
     };
 
     let state = appReducer(base, { type: "TURN_EVENT", sessionId: "sess-1", event: started });

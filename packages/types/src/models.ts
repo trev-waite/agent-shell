@@ -3,13 +3,14 @@
  * Future work: add OpenAI / Anthropic adapters in @relay/providers and enable their tabs.
  */
 export const GEMINI_MODELS = [
-  { id: "gemini-3.5-flash-lite", label: "3.5 Flash Lite" },
+  { id: "gemini-3.8-flash", label: "3.8 Flash" },
+  { id: "gemini-3.7-flash", label: "3.7 Flash" },
   { id: "gemini-3.6-flash", label: "3.6 Flash" },
 ] as const;
 
 export type GeminiModelId = (typeof GEMINI_MODELS)[number]["id"];
 
-export const DEFAULT_GEMINI_MODEL: GeminiModelId = "gemini-3.5-flash-lite";
+export const DEFAULT_GEMINI_MODEL: GeminiModelId = "gemini-3.8-flash";
 
 export interface ModelOption {
   readonly id: string;

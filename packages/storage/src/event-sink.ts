@@ -104,12 +104,17 @@ export function createProjectorEventSink(
     }, tokenBatchFlushMs);
   }
 
-  async function flushLane(sessionId: string, lane: Lane): Promise<void> {
+  async function flushQueuedLane(sessionId: string, lane: Lane): Promise<void> {
     flushTokenBatch(sessionId, lane);
+    await lane.chain;
+  }
+
+  async function flushLane(sessionId: string, lane: Lane): Promise<void> {
     while (true) {
+      flushTokenBatch(sessionId, lane);
       const target = lane.chain;
       await target;
-      if (lane.chain === target) break;
+      if (lane.chain === target && lane.tokenBatch.length === 0) break;
     }
     if (lane.persistError !== null) {
       const error = lane.persistError;
@@ -140,6 +145,10 @@ export function createProjectorEventSink(
       flushTokenBatch(event.sessionId, lane);
       enqueuePersist(lane, [event]);
       return Promise.resolve();
+    },
+    async flushQueued(sessionId: string): Promise<void> {
+      const lane = lanes.get(sessionId);
+      if (lane) await flushQueuedLane(sessionId, lane);
     },
     async flush(sessionId?: string): Promise<void> {
       if (sessionId !== undefined) {

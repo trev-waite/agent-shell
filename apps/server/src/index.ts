@@ -3,6 +3,7 @@ import { loadMonorepoEnv } from "./load-env.js";
 loadMonorepoEnv();
 
 import Fastify from "fastify";
+import { registerSessionEventRoute } from "./session-events.js";
 import fastifyCors from "@fastify/cors";
 import type { ReasoningLevel } from "@relay/providers";
 import { createGeminiProvider } from "@relay/providers";
@@ -22,7 +23,6 @@ import {
 } from "@relay/storage";
 import { createToolRegistry } from "@relay/tool-registry";
 import { registerTools } from "@relay/tools";
-import type { RelayEvent } from "@relay/types";
 import { corsOriginHeaders, resolveCorsOrigin } from "./cors.js";
 import {
   DEFAULT_GEMINI_MODEL,
@@ -208,53 +208,11 @@ async function main() {
     },
   );
 
-  app.get<{ Params: { id: string }; Querystring: { after?: string } }>(
-    "/sessions/:id/events",
-    async (request, reply) => {
-      const { id: sessionId } = request.params;
-      const afterId =
-        (request.headers["last-event-id"] as string | undefined) ??
-        request.query.after;
-
-      reply.hijack();
-      reply.raw.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-        ...corsOriginHeaders(request.headers.origin),
-      });
-
-      const sentIds = new Set<string>();
-      const sendEvent = (event: RelayEvent) => {
-        if (reply.raw.writableEnded || sentIds.has(event.id)) return;
-        sentIds.add(event.id);
-        reply.raw.write(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
-      };
-
-      for await (const event of runtime.replay({
-        sessionId,
-        ...(afterId !== undefined ? { afterEventId: afterId } : {}),
-      })) {
-        sendEvent(event);
-      }
-
-      const unsubscribe = runtime.onSessionEvent(sessionId, sendEvent);
-
-      const heartbeat = setInterval(() => {
-        if (!reply.raw.writableEnded) {
-          reply.raw.write(": heartbeat\n\n");
-        }
-      }, 15_000);
-
-      await new Promise<void>((resolve) => {
-        request.raw.on("close", () => {
-          clearInterval(heartbeat);
-          unsubscribe();
-          resolve();
-        });
-      });
-    },
-  );
+  registerSessionEventRoute(app, {
+    replay: (options) => runtime.replay(options),
+    subscribe: (sessionId, handler) => runtime.onSessionEvent(sessionId, handler),
+    flushQueued: (sessionId) => eventSink.flushQueued?.(sessionId) ?? Promise.resolve(),
+  });
 
   app.get<{ Params: { id: string } }>(
     "/sessions/:id/replay",
