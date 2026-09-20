@@ -63,7 +63,7 @@ export function AgentOrb({
       orbPalette(status, tokens.accent, tokens.sphereFront, tokens.isDark),
     [status, tokens.accent, tokens.sphereFront, tokens.isDark],
   );
-  const colorTint = colors[3] ?? colors[0];
+  const colorTint = colors[3] ?? colors[0] ?? tokens.accent;
   const speed = orbSpeed(status);
 
   return (

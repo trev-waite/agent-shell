@@ -194,3 +194,55 @@ describe("createProjectorEventSink", () => {
     expect(order).toEqual(["batch:t1", "batch:done"]);
   });
 });
+
+test("flush includes tokens queued while a previous batch is persisting", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  let started!: () => void;
+  const persisting = new Promise<void>((resolve) => { started = resolve; });
+  const persisted: string[] = [];
+  const sink = createProjectorEventSink({
+    async persist(event) {
+      if (event.id === "first") { started(); await blocked; }
+      persisted.push(event.id);
+    },
+  }, { tokenBatchSize: 32, tokenBatchFlushMs: 60_000 });
+  const token = (id: string): RelayEvent => ({
+    id, sessionId: "flush-race", timestamp: 1,
+    type: "token.streamed", payload: { messageId: "m1", token: id },
+  });
+  await sink.write(token("first"));
+  const flushing = sink.flush("flush-race");
+  await persisting;
+  await sink.write(token("second"));
+  release();
+  await flushing;
+  expect(persisted).toEqual(["first", "second"]);
+});
+
+test("flushQueued does not wait for tokens written after it starts", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  let started!: () => void;
+  const persisting = new Promise<void>((resolve) => { started = resolve; });
+  const persisted: string[] = [];
+  const sink = createProjectorEventSink({
+    async persist(event) {
+      if (event.id === "first") { started(); await blocked; }
+      persisted.push(event.id);
+    },
+  }, { tokenBatchSize: 32, tokenBatchFlushMs: 60_000 });
+  const token = (id: string): RelayEvent => ({
+    id, sessionId: "queued-race", timestamp: 1,
+    type: "token.streamed", payload: { messageId: "m1", token: id },
+  });
+  await sink.write(token("first"));
+  const flushing = sink.flushQueued!("queued-race");
+  await persisting;
+  await sink.write(token("second"));
+  release();
+  await flushing;
+  expect(persisted).toEqual(["first"]);
+  await sink.flush("queued-race");
+  expect(persisted).toEqual(["first", "second"]);
+});

@@ -61,8 +61,13 @@ export interface LiveEventPublisher {
 
 export interface EventSink {
   write(event: RelayEvent): Promise<void>;
-  /** Wait for queued writes, optionally scoped to one session. */
+  /** Wait until this session (or all sessions) has no remaining queued writes. End-of-turn durability. */
   flush(sessionId?: string): Promise<void>;
+  /**
+   * Persist writes already queued for this session. Does not wait for later writes.
+   * Observer join uses this so replay can see pre-subscribe events without blocking live tokens.
+   */
+  flushQueued?(sessionId: string): Promise<void>;
 }
 
 export interface Worker {

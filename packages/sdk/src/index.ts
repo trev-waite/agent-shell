@@ -1,3 +1,4 @@
+import { readEventStream } from "./event-stream.js";
 import type { RelayEvent, Session } from "@relay/types";
 
 export interface RelayClientOptions {
@@ -6,7 +7,7 @@ export interface RelayClientOptions {
 
 export interface SendOptions {
   prompt: string;
-  /** Provider model id (e.g. gemini-3.5-flash-lite). Validated server-side per provider. */
+  /** Provider model id (e.g. gemini-3.8-flash). Validated server-side per provider. */
   model?: string;
   /** Continue an existing session with a follow-up message instead of starting a new one. */
   sessionId?: string;
@@ -149,8 +150,15 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
     subscribe(options: SubscribeOptions): () => void {
       const abortController = new AbortController();
       let lastEventId = options.lastEventId;
+      let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+      const reconnect = (delay: number) => {
+        if (!abortController.signal.aborted) {
+          reconnectTimer = setTimeout(() => void connect(), delay);
+        }
+      };
 
       const connect = async () => {
+        if (abortController.signal.aborted) return;
         try {
           const headers: Record<string, string> = {
             Accept: "text/event-stream",
@@ -175,59 +183,29 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
 
           options.onConnect?.();
 
-          const reader = response.body?.getReader();
-          if (!reader) throw new Error("No response body");
-
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            let eventId: string | undefined;
-            let data: string | undefined;
-
-            for (const line of lines) {
-              const trimmed = line.replace(/\r$/, "");
-              if (trimmed.startsWith(":")) continue;
-              if (trimmed.startsWith("id:")) {
-                eventId = trimmed.slice(3).trim();
-              } else if (trimmed.startsWith("data:")) {
-                data = trimmed.slice(5).trim();
-              } else if (trimmed === "" && data) {
-                try {
-                  const event = JSON.parse(data) as RelayEvent;
-                  if (eventId) lastEventId = eventId;
-                  options.onEvent(event);
-                } catch {
-                  // skip malformed events
-                }
-                data = undefined;
-                eventId = undefined;
-              }
-            }
-          }
+          await readEventStream(response, (event, eventId) => {
+            options.onEvent(event);
+            if (eventId !== undefined) lastEventId = eventId;
+          });
 
           if (!abortController.signal.aborted) {
             options.onClose?.();
-            setTimeout(() => connect(), 1000);
+            reconnect(1000);
           }
         } catch (err) {
           if (!abortController.signal.aborted) {
             options.onError?.(err instanceof Error ? err : new Error(String(err)));
-            setTimeout(() => connect(), 2000);
+            reconnect(2000);
           }
         }
       };
 
       connect();
 
-      return () => abortController.abort();
+      return () => {
+        clearTimeout(reconnectTimer);
+        abortController.abort();
+      };
     },
 
     replay(options: ReplayOptions): () => void {
@@ -247,38 +225,7 @@ export function createClient(opts: RelayClientOptions = {}): RelayClient {
             throw new Error(`Replay failed: ${response.status}`);
           }
 
-          const reader = response.body?.getReader();
-          if (!reader) throw new Error("No response body");
-
-          const decoder = new TextDecoder();
-          let buffer = "";
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
-
-            let data: string | undefined;
-
-            for (const line of lines) {
-              const trimmed = line.replace(/\r$/, "");
-              if (trimmed.startsWith(":")) continue;
-              if (trimmed.startsWith("data:")) {
-                data = trimmed.slice(5).trim();
-              } else if (trimmed === "" && data) {
-                try {
-                  const event = JSON.parse(data) as RelayEvent;
-                  options.onEvent(event);
-                } catch {
-                  // skip malformed events
-                }
-                data = undefined;
-              }
-            }
-          }
+          await readEventStream(response, options.onEvent);
 
           options.onComplete?.();
         } catch (err) {

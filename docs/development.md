@@ -3,7 +3,8 @@
 ```bash
 bun run build       # Build all packages
 bun run typecheck   # Type-check all packages
-bun run test        # Invariant tests (storage, runtime, providers, terminal reducer)
+bun run test        # Local tests, including SDK and HTTP streaming; no Redis or API keys needed
+bun run test:integration # Live Redis tests; requires a reachable REDIS_URL
 bun run dev:server  # Runtime only (direct Bun watch, loads root .env)
 bun run dev:terminal # Ink UI only (direct Bun watch)
 bun run dev:web      # Browser React UI (Bun dev server + HMR)
@@ -13,10 +14,14 @@ bun run db:migrate  # Drizzle migrations (optional; server also auto-migrates)
 
 ## Environment variables
 
+`bun run test` disables infrastructure tests even if `.env` contains `REDIS_URL`.
+Run `bun run test:integration` explicitly against a disposable Redis instance.
+GitHub Actions runs typecheck, local tests, and build, plus a separate Redis service job.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GEMINI_API_KEY` | — | Google Gemini API key (required, server only) |
-| `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Default Gemini model ID (server + terminal fallback) |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Default Gemini model ID (server + terminal fallback) |
 | `GEMINI_REASONING` | — | Optional thinking depth: `minimal`, `low`, `medium`, `high`, `none`, or `provider-default` |
 | `RELAY_PORT` | `4310` | Runtime server port |
 | `RELAY_DB_PATH` | `./data/relay.db` | SQLite database path |
